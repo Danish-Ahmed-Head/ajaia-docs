@@ -71,7 +71,7 @@
           <svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>Import file
         </label>
         <input id="upload" class="sr-only" type="file" accept=".txt,.md,.docx">
-        <p class="hint">Accepts .txt, .md and .docx up to 2 MB. Creates a new document you own.</p>
+        <p class="hint">Accepts .txt, .md and .docx up to 2 MB, or drop a file anywhere. Creates a new document you own.</p>
       </div>
 
       <nav class="lists" aria-label="Your documents">
@@ -97,7 +97,9 @@
         <div class="empty-actions">
           <button id="empty-new" class="btn btn-primary"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New document</button>
           <label class="btn" for="upload"><svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>Import file</label>
+          <button id="empty-browse" class="btn mobile-only"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>Your documents</button>
         </div>
+        <p class="hint">Tip: drop a .txt, .md or .docx file anywhere to import it.</p>
       </div>
 
       <div id="editor-view" class="editor-view" hidden>

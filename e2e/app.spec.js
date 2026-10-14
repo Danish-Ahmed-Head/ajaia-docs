@@ -328,6 +328,39 @@ test('review fix: Markdown export keeps nested lists and puts marks around the w
   expect(md).toContain('**Ship** it');
 });
 
+test('ux: dropping a file anywhere imports it; Ctrl+S saves without the browser dialog', async ({ page }) => {
+  await signIn(page, 'Alice Owner');
+  const dt = await page.evaluateHandle(() => {
+    const d = new DataTransfer();
+    d.items.add(new File(['# Dropped\n\nhello'], 'dropped.md', { type: 'text/markdown' }));
+    return d;
+  });
+  await page.dispatchEvent('main', 'dragover', { dataTransfer: dt });
+  await expect(page.locator('body')).toHaveClass(/dropping/);
+  await page.dispatchEvent('main', 'drop', { dataTransfer: dt });
+  await expect(page.locator('body')).not.toHaveClass(/dropping/);
+  await expect(page.locator('#title')).toHaveValue('dropped');
+  await expect(editor(page).locator('h1')).toHaveText('Dropped');
+
+  await editor(page).click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' now');
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.locator('#save-status')).toHaveText('All changes saved');
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.locator('#toast')).toContainText('saved automatically');
+});
+
+test('ux: on a phone the home screen has a compact top bar and opens the documents menu', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page, 'Alice Owner');
+  const bar = await page.locator('.topbar').boundingBox();
+  expect(bar.height).toBeLessThan(70);
+  await page.getByRole('button', { name: 'Your documents' }).click();
+  await expect(page.locator('#sidebar')).toBeInViewport();
+  await expect(page.locator('#new-doc')).toBeFocused();
+});
+
 test('expired session sends the user back to sign-in', async ({ page, context }) => {
   await signIn(page, 'Alice Owner');
   await context.clearCookies();

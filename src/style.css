@@ -191,6 +191,12 @@ input, select { accent-color: var(--accent); caret-color: var(--accent); }
 .empty h2 { font-size: 22px; letter-spacing: -0.01em; }
 .empty p { color: var(--muted); }
 .empty-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+.mobile-only { display: none; }
+body.dropping::after {
+  content: 'Drop to import as a new document'; position: fixed; inset: 12px; z-index: 100; display: grid; place-items: center;
+  border: 2px dashed var(--accent); border-radius: 14px; background: color-mix(in srgb, var(--canvas) 88%, transparent);
+  color: var(--accent); font-size: 18px; font-weight: 600; pointer-events: none;
+}
 
 .editor-view { max-width: 920px; margin: 0 auto; }
 .doc-header {
@@ -339,7 +345,9 @@ dialog h4 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px
   .editor .tiptap { padding: 32px 28px 56px; }
 }
 @media (max-width: 760px) {
-  .app { grid-template-columns: minmax(0, 1fr); }
+  /* Without explicit rows, min-height's spare space is shared out and the top bar stretches. */
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .mobile-only { display: inline-flex; }
   .topbar {
     display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 20; min-height: 52px;
     padding: 8px 12px; background: var(--side); border-bottom: 1px solid var(--line-soft);

@@ -131,7 +131,7 @@ async function refreshList() {
   const hasDocs = owned.length + shared.length > 0;
   $('empty-title').textContent = hasDocs ? 'Pick up where you left off' : 'Start a document';
   $('empty-text').textContent = hasDocs
-    ? 'Choose a document from the sidebar, or start a new one.'
+    ? 'Open one of your documents, or start a new one.'
     : 'Create a blank document, or import a .txt, .md or .docx file. You can share it with a teammate as an editor or viewer.';
 }
 
@@ -151,10 +151,29 @@ async function createDoc() {
 }
 $('new-doc').addEventListener('click', createDoc);
 $('empty-new').addEventListener('click', createDoc);
+$('empty-browse').addEventListener('click', () => setNav(true));
 
-$('upload').addEventListener('change', async (e) => {
+$('upload').addEventListener('change', (e) => {
   const file = e.target.files[0]; e.target.value = '';
-  if (!file) return;
+  if (file) importFile(file);
+});
+
+// Drop a file anywhere to import it. Capture phase, so the editor doesn't also try to handle the drop.
+const isFileDrag = (e) => !$('app').hidden && e.dataTransfer?.types.includes('Files');
+window.addEventListener('dragover', (e) => {
+  if (!isFileDrag(e)) return;
+  e.preventDefault(); document.body.classList.add('dropping');
+}, true);
+window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+window.addEventListener('drop', (e) => {
+  document.body.classList.remove('dropping');
+  if (!isFileDrag(e)) return;
+  e.preventDefault(); e.stopPropagation();
+  const file = e.dataTransfer.files[0];
+  if (file) importFile(file);
+}, true);
+
+async function importFile(file) {
   if (!/\.(txt|md|docx)$/i.test(file.name)) return toast('Unsupported file. Use .txt, .md or .docx');
   if (file.size > 2 * 1024 * 1024) return toast('File too large (max 2 MB)');
   const form = new FormData(); form.append('file', file);
@@ -164,7 +183,7 @@ $('upload').addEventListener('change', async (e) => {
     setNav(false);
     location.hash = `#/doc/${id}`; await refreshList();
   } catch (err) { toast(err.message); }
-});
+}
 
 // ---------- editor ----------
 // Tiptap (ProseMirror): schema-enforced formatting, so stored HTML is always well-formed.
@@ -389,6 +408,12 @@ $('title').addEventListener('input', scheduleSave);
 $('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); editor?.view.focus(); } });
 // keepalive lets the final save finish while the tab closes (browser limit: 64 KB body).
 window.addEventListener('beforeunload', (e) => { if (state.dirty) { save({ keepalive: true }); e.preventDefault(); } });
+// Ctrl/Cmd+S is muscle memory: save now instead of opening the browser's "Save page" dialog.
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's' || !state.doc) return;
+  e.preventDefault();
+  if (state.dirty) save(); else if (state.doc.role !== 'viewer') toast('All changes are saved automatically');
+});
 
 // Toolbar -> Tiptap commands. Pasted content is normalised by the editor schema (and sanitised again on the server).
 const COMMANDS = {
