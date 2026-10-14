@@ -10,10 +10,10 @@ if (!sessionSecret) {
   sessionSecret = crypto.randomBytes(32).toString('hex'); // dev only: sessions reset when the server restarts
 }
 
-// Production: DATABASE_URL (Neon Postgres). Local: PGlite persisted in ./data, no setup needed.
+// Production: DATABASE_URL (Neon Postgres). Local: PGlite persisted in ./data. E2E: DB_IN_MEMORY=1 for a clean DB per run.
 const db = await createDb({
   url: process.env.DATABASE_URL,
-  dataDir: process.env.DATABASE_URL ? undefined : path.join(process.cwd(), 'data', 'pglite'),
+  dataDir: process.env.DATABASE_URL || process.env.DB_IN_MEMORY ? undefined : path.join(process.cwd(), 'data', 'pglite'),
 });
 const port = Number(process.env.PORT) || 3000;
 createApp(db, { sessionSecret, production }).listen(port, () =>

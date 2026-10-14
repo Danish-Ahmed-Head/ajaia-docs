@@ -4,15 +4,34 @@ import StarterKit from '@tiptap/starter-kit';
 const $ = (id) => document.getElementById(id);
 const state = { me: null, doc: null, saveTimer: null, dirty: false, saving: null };
 
-async function api(path, { method = 'GET', body, form } = {}) {
-  const res = await fetch(path, {
-    method,
-    headers: body ? { 'content-type': 'application/json' } : undefined,
-    body: form ?? (body ? JSON.stringify(body) : undefined),
-  });
+async function api(path, { method = 'GET', body, form, keepalive = false } = {}) {
+  let res;
+  try {
+    res = await fetch(path, {
+      method, keepalive,
+      headers: body ? { 'content-type': 'application/json' } : undefined,
+      body: form ?? (body ? JSON.stringify(body) : undefined),
+    });
+  } catch {
+    throw Object.assign(new Error('Network error. Check your connection'), { status: 0 });
+  }
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && path !== '/api/login') sessionExpired();
   if (!res.ok) throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   return data;
+}
+
+// Last line of defence: any failed action surfaces as a message instead of failing silently.
+window.addEventListener('unhandledrejection', (e) => {
+  e.preventDefault();
+  if (e.reason?.status !== 401) toast(e.reason?.message ?? 'Something went wrong'); // 401 is already handled by sessionExpired()
+});
+
+function sessionExpired() {
+  if (!$('login').hidden) return;
+  state.doc = null; state.dirty = false; clearTimeout(state.saveTimer);
+  toast('Your session ended. Please sign in again.');
+  showLogin();
 }
 
 function toast(msg) {
@@ -32,11 +51,13 @@ async function showLogin() {
 }
 $('user-list').addEventListener('click', async (e) => {
   const b = e.target.closest('button'); if (!b) return;
-  await api('/api/login', { method: 'POST', body: { email: b.dataset.email } });
-  boot();
+  try {
+    await api('/api/login', { method: 'POST', body: { email: b.dataset.email } });
+    boot();
+  } catch (err) { toast(err.message); }
 });
 $('logout').addEventListener('click', async () => {
-  await flushSave();
+  if (!(await flushSave())) return;
   await api('/api/logout', { method: 'POST' });
   state.doc = null; location.hash = ''; showLogin();
 });
@@ -97,7 +118,7 @@ function mountEditor(content, editable) {
 }
 
 async function openDoc(id) {
-  await flushSave();
+  if (!(await flushSave())) { history.replaceState(null, '', `#/doc/${state.doc.id}`); return; }
   try {
     state.doc = await api(`/api/docs/${id}`);
   } catch (err) {
@@ -129,23 +150,38 @@ function scheduleSave() {
   state.saveTimer = setTimeout(save, 800);
 }
 
-async function save() {
+async function save({ keepalive = false } = {}) {
   clearTimeout(state.saveTimer);
+  await state.saving; // one save in flight at a time, so an older save can never land after a newer one
   if (!state.doc || !state.dirty || state.doc.role === 'viewer') return;
   const title = $('title').value.trim();
   if (!title) { setStatus('Title cannot be empty', true); return; }
   state.dirty = false; setStatus('Saving…');
   const doc = state.doc;
-  state.saving = api(`/api/docs/${doc.id}`, { method: 'PUT', body: { title, content: editor.getHTML() } })
-    .then((r) => { if (state.doc === doc) { doc.title = title; setStatus('All changes saved'); } doc.updated_at = r.updated_at; refreshList(); })
-    .catch((err) => { state.dirty = true; setStatus(`Save failed: ${err.message}`, true); });
+  state.saving = api(`/api/docs/${doc.id}`, { method: 'PUT', body: { title, content: editor.getHTML() }, keepalive })
+    .then((r) => {
+      doc.title = title; doc.updated_at = r.updated_at;
+      if (state.doc === doc && !state.dirty) setStatus('All changes saved');
+      refreshList();
+    })
+    .catch((err) => {
+      if (state.doc !== doc) return;
+      state.dirty = true;
+      setStatus(`Not saved: ${err.message}`, true);
+      // Transient failures (offline, rate limit, server error) retry; validation errors wait for the user's next edit.
+      if (err.status === 0 || err.status === 429 || err.status >= 500) state.saveTimer = setTimeout(save, 5000);
+    });
   await state.saving;
 }
-async function flushSave() { if (state.dirty) await save(); else if (state.saving) await state.saving; }
+async function flushSave() {
+  if (state.dirty) await save(); else await state.saving;
+  return !state.dirty || confirm('Your latest changes could not be saved. Leave this document anyway?');
+}
 
 $('title').addEventListener('input', scheduleSave);
 $('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); editor?.commands.focus(); } });
-window.addEventListener('beforeunload', (e) => { if (state.dirty) { save(); e.preventDefault(); } });
+// keepalive lets the final save finish while the tab closes (browser limit: 64 KB body).
+window.addEventListener('beforeunload', (e) => { if (state.dirty) { save({ keepalive: true }); e.preventDefault(); } });
 
 // Toolbar -> Tiptap commands. Pasted content is normalised by the editor schema (and sanitised again on the server).
 const COMMANDS = {
@@ -216,13 +252,9 @@ $('export-btn').addEventListener('click', () => {
 });
 
 // ---------- sharing ----------
-async function renderShareDialog() {
+async function renderShareList() {
   const d = await api(`/api/docs/${state.doc.id}`);
   state.doc.shares = d.shares;
-  const users = await api('/api/users');
-  const candidates = users.filter((u) => u.id !== state.me.id);
-  $('share-email').innerHTML = candidates.map((u) =>
-    `<option value="${escapeHtml(u.email)}">${escapeHtml(u.name)} (${escapeHtml(u.email)})</option>`).join('');
   $('share-list').innerHTML = `<li><span>${escapeHtml(state.me.name)} <span class="badge">owner</span></span></li>` +
     d.shares.map((s) => `<li><span>${escapeHtml(s.name)} <span class="badge">${s.role === 'editor' ? 'can edit' : 'can view'}</span></span>
       <button type="button" class="link danger" data-remove="${s.id}">Remove</button></li>`).join('');
@@ -230,19 +262,25 @@ async function renderShareDialog() {
 }
 $('share-btn').addEventListener('click', async () => {
   $('share-error').textContent = '';
-  await renderShareDialog();
+  // The user picker is filled once per open, so it never resets under the user while they pick.
+  const users = await api('/api/users');
+  $('share-email').innerHTML = users.filter((u) => u.id !== state.me.id).map((u) =>
+    `<option value="${escapeHtml(u.email)}">${escapeHtml(u.name)} (${escapeHtml(u.email)})</option>`).join('');
+  await renderShareList();
   $('share-dialog').showModal();
 });
-$('share-add').addEventListener('click', async () => {
+$('share-add').addEventListener('click', async (e) => {
   $('share-error').textContent = '';
+  e.target.disabled = true;
   try {
     await api(`/api/docs/${state.doc.id}/share`, { method: 'POST', body: { email: $('share-email').value, role: $('share-role').value } });
-    await renderShareDialog();
+    await renderShareList();
   } catch (err) { $('share-error').textContent = err.message; }
+  finally { e.target.disabled = false; }
 });
 $('share-list').addEventListener('click', async (e) => {
   const id = e.target.dataset.remove; if (!id) return;
-  try { await api(`/api/docs/${state.doc.id}/share/${id}`, { method: 'DELETE' }); await renderShareDialog(); }
+  try { await api(`/api/docs/${state.doc.id}/share/${id}`, { method: 'DELETE' }); await renderShareList(); }
   catch (err) { $('share-error').textContent = err.message; }
 });
 

@@ -47,6 +47,10 @@ test('API rejects non-JSON bodies (blocks form-encoded cross-site posts)', async
     const r = await fetch(`${srv.base}/api/docs`, { method: 'POST', headers: { cookie: alice.cookie, 'content-type': type }, body: 'title=x' });
     assert.equal(r.status, 415, type);
   }
+  // Bodiless POSTs (logout) and DELETEs are not affected.
+  const logout = await fetch(`${srv.base}/api/logout`, { method: 'POST', headers: { cookie: alice.cookie } });
+  assert.equal(logout.status, 200);
+  assert.match(logout.headers.get('set-cookie'), /^sid=; Max-Age=0/);
 });
 
 test('failed logins are rate limited (429 after 20); successful logins are not counted', async () => {

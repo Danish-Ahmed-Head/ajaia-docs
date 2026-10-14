@@ -46,8 +46,11 @@ export function createApp(db, { sessionSecret, production = false }) {
   app.use(express.json({ limit: '2mb' }));
 
   // Writes must be JSON or multipart: blocks form/text-encoded cross-site submissions (defence in depth with SameSite).
-  app.use('/api', (req, _res, next) =>
-    next(req.is(['application/json', 'multipart/form-data']) === false ? new HttpError(415, 'Unsupported content type') : undefined));
+  // (type-is treats "Content-Length: 0" as a body, so bodiless POSTs like logout are checked by length instead.)
+  app.use('/api', (req, _res, next) => {
+    const hasBody = Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding'] !== undefined;
+    next(hasBody && !req.is(['application/json', 'multipart/form-data']) ? new HttpError(415, 'Unsupported content type') : undefined);
+  });
   app.use('/api', limiter(60_000, 300)); // general ceiling per IP
 
   // --- mocked auth (allowed by the brief): pick a seeded user; signed, httpOnly session cookie ---
