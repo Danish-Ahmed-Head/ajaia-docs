@@ -1,7 +1,5 @@
 # AI workflow note
 
-> Draft from the session log. Danish: rewrite it in your own voice before submitting.
-
 ## Tools used
 - **Claude Code** (desktop app, agentic mode, Opus 5.5): planning, research, implementation, tests, docs.
 - **Claude Code's built-in browser**: drove the running app as three different users to verify flows and read console errors.
