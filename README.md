@@ -235,7 +235,7 @@ Common status codes: `400` invalid input · `401` not signed in · `403` not all
 
 ## Deploy
 
-**Live setup (free, no card): Vercel + Neon Postgres.** [`vercel.json`](vercel.json) builds the frontend to `dist/` (served from Vercel's CDN with security headers) and runs the Express API as one Vercel Function ([`api/index.js`](api/index.js)) in Portland, next to the Neon database in Oregon.
+**Live setup (free, no card): Vercel + Neon Postgres.** [`vercel.json`](vercel.json) builds the frontend to `dist/` (served from Vercel's CDN with security headers) and runs the Express API as one Vercel Function ([`server/vercel.js`](server/vercel.js), bundled by [`scripts/build-vercel.mjs`](scripts/build-vercel.mjs)) in Portland, next to the Neon database in Oregon.
 
 1. Create a free Neon project (region **AWS US West 2, Oregon**) and copy its **pooled** connection string.
 2. Import the repo at https://vercel.com/new and keep the settings from `vercel.json`.

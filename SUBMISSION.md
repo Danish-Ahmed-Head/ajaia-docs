@@ -26,7 +26,7 @@ No passwords. Pick a user on the sign-in screen; use **Switch user** to change.
 | `docs/SDLC.md` | Process record: phases, who/when/what/why, defect log |
 | `SUBMISSION.md` | This file |
 | `VIDEO_URL.txt` | Walkthrough video link |
-| `vercel.json`, `api/index.js` | Live deployment (Vercel + Neon) |
+| `vercel.json`, `server/vercel.js`, `scripts/build-vercel.mjs` | Live deployment (Vercel + Neon) |
 | `Dockerfile`, `render.yaml` | Alternative deployment configs |
 | `screenshots/` | Sign-in, owner editing, share dialog, viewer read-only, dark mode, mobile, version history, presence |
 

@@ -10,7 +10,7 @@
 
 | Option | Cost | Card? | Data survives? | Effort | Verdict |
 |---|---|---|---|---|---|
-| **A. Vercel (app) + Neon (Postgres)** | $0 | No | Yes (Neon) | Low: `vercel.json` + `api/index.js` included | **Live deployment.** No card, fast CDN for the pages, functions in Portland next to Neon (Oregon) |
+| **A. Vercel (app) + Neon (Postgres)** | $0 | No | Yes (Neon) | Low: `vercel.json` + `scripts/build-vercel.mjs` included | **Live deployment.** No card, fast CDN for the pages, functions in Portland next to Neon (Oregon) |
 | B. Render (web) + Neon | $0 | Asked for one | Yes | Low: `render.yaml` included | Good if you have a card that passes verification; about a 1-minute cold start after 15 min idle |
 | C. Docker on your own VPS (Coolify/Caddy) | Your server cost | n/a | Yes | Medium: `Dockerfile` included | Always warm; needs your own server and a domain. Don't use a client's server |
 | D. Hugging Face Docker Space | Paid plan required | — | — | — | Rejected |

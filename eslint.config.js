@@ -2,10 +2,10 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
-  { ignores: ['dist/', 'data/', 'node_modules/', 'test-results/', 'playwright-report/'] },
+  { ignores: ['dist/', '.vercel/', 'data/', 'node_modules/', 'test-results/', 'playwright-report/'] },
   js.configs.recommended,
   {
-    files: ['server/**/*.js', 'api/**/*.js', 'test/**/*.js', '*.config.js'],
+    files: ['server/**/*.js', 'scripts/**/*.mjs', 'test/**/*.js', '*.config.js'],
     languageOptions: { globals: globals.node },
   },
   {
