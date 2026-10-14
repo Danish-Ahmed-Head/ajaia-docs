@@ -5,8 +5,13 @@ export default [
   { ignores: ['dist/', 'data/', 'node_modules/', 'test-results/', 'playwright-report/'] },
   js.configs.recommended,
   {
-    files: ['server/**/*.js', 'test/**/*.js', 'e2e/**/*.js', '*.config.js'],
+    files: ['server/**/*.js', 'test/**/*.js', '*.config.js'],
     languageOptions: { globals: globals.node },
+  },
+  {
+    // Playwright specs run in Node but pass callbacks that execute inside the browser (page.evaluate).
+    files: ['e2e/**/*.js'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
   {
     files: ['src/**/*.js'],

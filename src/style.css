@@ -296,10 +296,46 @@ dialog h4 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px
 }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
 
+/* ---------- Presence ---------- */
+.presence { display: flex; align-items: center; }
+.presence:empty { display: none; }
+.presence .avatar { width: 28px; height: 28px; font-size: 11px; margin-left: -6px; box-shadow: 0 0 0 2px var(--canvas); }
+.presence .avatar:first-child { margin-left: 0; }
+.presence-label { font-size: 12.5px; color: var(--muted); margin-left: 8px; white-space: nowrap; }
+.banner-info { background: var(--accent-soft); border-color: transparent; color: var(--text); align-items: center; }
+.banner-info .icon { color: var(--accent); margin-top: 0; }
+.banner-info span { flex: 1; }
+
+/* ---------- Version history ---------- */
+.dlg-wide { width: min(940px, calc(100vw - 32px)); }
+.history-help { font-size: 13px; margin: -6px 0 14px; }
+.history { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 16px; min-height: 420px; }
+.history-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 60vh; display: grid; gap: 2px; align-content: start; }
+.history-list button {
+  width: 100%; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: center; text-align: left;
+  padding: 8px 10px; border: 0; border-radius: var(--radius); background: transparent;
+}
+.history-list button:hover { background: var(--hover); }
+.history-list button[aria-current='true'] { background: var(--accent-soft); }
+.history-list .avatar { width: 28px; height: 28px; font-size: 11px; }
+.history-list b { display: block; font-weight: 600; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.history-list small { display: block; font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-pane { display: flex; flex-direction: column; min-width: 0; }
+.history-preview {
+  flex: 1; overflow-y: auto; max-height: 52vh; padding: 24px 28px; border: 1px solid var(--line-soft);
+  border-radius: var(--radius); background: var(--canvas); line-height: 1.65;
+}
+.history-preview h1 { font-size: 24px; margin: 0 0 0.5em; } .history-preview h2 { font-size: 20px; } .history-preview h3 { font-size: 17px; }
+.history-preview p { margin: 0 0 0.8em; }
+.history-foot { align-items: center; justify-content: space-between; margin-top: 12px; }
+.history-foot .muted { font-size: 13px; }
+
 /* ---------- Responsive: sidebar becomes a drawer ---------- */
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .doc-actions .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .doc-actions .btn { width: 38px; padding: 0; }
+}
+@media (max-width: 900px) {
   .editor .tiptap { padding: 32px 28px 56px; }
 }
 @media (max-width: 760px) {
@@ -321,9 +357,30 @@ dialog h4 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px
   .editor .tiptap { padding: 22px 18px 48px; font-size: 16.5px; }
   .doc-header { padding-top: 14px; }
   .title { font-size: 21px; }
+  .history { grid-template-columns: 1fr; }
+  .history-list { max-height: 28vh; }
+  .presence-label { display: none; }
   .invite { grid-template-columns: 1fr 1fr; }
   .invite select:first-child { grid-column: 1 / -1; }
   .empty { margin-top: 8vh; }
+}
+
+/* ---------- Export PDF: the browser's print-to-PDF prints only the document ---------- */
+@media print {
+  @page { margin: 18mm 16mm; }
+  body { background: #fff; color: #000; }
+  .sidebar, .topbar, .scrim, .toolbar, .doc-actions, .save-status, .presence, .banner, .word-count, .toast, dialog,
+  .doc-meta, .title-wrap { display: none !important; }
+  .app { display: block; }
+  .main { padding: 0; }
+  .editor-view { max-width: none; }
+  .doc-header { padding: 0; }
+  .sheet-wrap { margin: 0; }
+  .sheet-wrap::before { content: attr(data-title); display: block; font: 700 22pt/1.2 var(--font); margin-bottom: 14pt; }
+  .editor { border: 0; box-shadow: none; background: none; }
+  .editor .tiptap { padding: 0; min-height: 0; font-size: 11.5pt; color: #000; }
+  .editor .tiptap p, .editor .tiptap ul, .editor .tiptap ol { max-width: none; }
+  .editor .tiptap h1, .editor .tiptap h2, .editor .tiptap h3 { break-after: avoid; }
 }
 
 @media (prefers-reduced-motion: reduce) {

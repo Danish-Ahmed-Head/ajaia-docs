@@ -32,6 +32,9 @@
       <symbol id="i-list-ul" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
       <symbol id="i-list-ol" viewBox="0 0 24 24"><path d="M10 6h10M10 12h10M10 18h10M4 4.5 5.5 4v5M3.5 14.8c0-1.3 2.9-1.4 2.9.2 0 1.3-2.9 2.4-2.9 3.6h3"/></symbol>
       <symbol id="i-quote" viewBox="0 0 24 24"><path d="M10 7.5c-3 .8-4.5 3.2-4.5 8h4.5v-4.5H7M18.5 7.5c-3 .8-4.5 3.2-4.5 8h4.5v-4.5H15.5"/></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7.5V12l3 2"/></symbol>
+      <symbol id="i-printer" viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M7 14h10v7H7z"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.7-4.3L3 9M3 4v5h5M4 13a8 8 0 0 0 14.7 4.3L21 15m0 5v-5h-5"/></symbol>
       <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
       <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/></symbol>
     </defs>
@@ -103,10 +106,13 @@
             <input id="title" class="title" maxlength="200" aria-label="Document title" placeholder="Untitled document" autocomplete="off">
             <div id="doc-meta" class="doc-meta"></div>
           </div>
+          <div id="presence" class="presence" aria-live="polite"></div>
           <span id="save-status" class="save-status" role="status" aria-live="polite"></span>
           <div class="doc-actions">
             <button id="share-btn" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-share"/></svg><span class="label">Share</span></button>
+            <button id="history-btn" class="btn btn-ghost" title="Version history"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span class="label">History</span></button>
             <button id="export-btn" class="btn btn-ghost" title="Download as Markdown"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span class="label">Export .md</span></button>
+            <button id="pdf-btn" class="btn btn-ghost" title="Export as PDF (uses your browser's Save as PDF)"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg><span class="label">Export PDF</span></button>
             <button id="delete-btn" class="btn btn-ghost btn-danger-text" title="Delete document"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span class="label">Delete</span></button>
           </div>
         </header>
@@ -132,6 +138,11 @@
           <button data-cmd="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg class="icon"><use href="#i-redo"/></svg></button>
         </div>
 
+        <div id="remote-banner" class="banner banner-info" role="status" hidden>
+          <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>
+          <span id="remote-text"></span>
+          <button id="remote-reload" class="btn btn-sm">Load latest</button>
+        </div>
         <div id="readonly-banner" class="banner" role="note" hidden>
           <svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>
           <span>You have view-only access to this document. Ask the owner for edit access to make changes.</span>
@@ -164,6 +175,27 @@
       <h4>People with access</h4>
       <ul id="share-list" class="share-list"></ul>
       <div class="dlg-foot"><button value="close" class="btn">Done</button></div>
+    </form>
+  </dialog>
+
+  <!-- Version history -->
+  <dialog id="history-dialog" aria-labelledby="history-title" class="dlg-wide">
+    <form method="dialog">
+      <div class="dlg-head">
+        <h3 id="history-title">Version history</h3>
+        <button value="close" class="btn btn-icon btn-ghost" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button>
+      </div>
+      <p class="muted history-help">Autosaves by one person are grouped into one version per 10-minute session.</p>
+      <div class="history">
+        <ul id="history-list" class="history-list" aria-label="Versions"></ul>
+        <div class="history-pane">
+          <div id="history-preview" class="history-preview" tabindex="0" aria-label="Version preview"></div>
+          <div class="dlg-foot history-foot">
+            <span id="history-meta" class="muted"></span>
+            <button id="history-restore" type="button" class="btn btn-primary">Restore this version</button>
+          </div>
+        </div>
+      </div>
     </form>
   </dialog>
 

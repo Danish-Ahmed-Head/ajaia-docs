@@ -15,7 +15,7 @@ No passwords. Pick a user on the sign-in screen; use **Switch user** to change.
 | Path | What it is |
 |---|---|
 | `server/`, `src/` | Source code: Express 5 + Postgres API; Tiptap 3 frontend built with Vite |
-| `test/` | 21 API tests (`npm test`); `e2e/` 7 browser tests (`npm run test:e2e`) |
+| `test/` | 26 API tests (`npm test`); `e2e/` 10 browser tests (`npm run test:e2e`) |
 | `docs/TESTING.md` | Test strategy, mutation check, 10-minute manual test script |
 | `docs/DEPLOYMENT.md` | Hosting options compared, step-by-step deploy, production checklist |
 | `docs/PLAN.md` | Task breakdown for the hardening iteration |
@@ -27,7 +27,7 @@ No passwords. Pick a user on the sign-in screen; use **Switch user** to change.
 | `SUBMISSION.md` | This file |
 | `VIDEO_URL.txt` | Walkthrough video link |
 | `Dockerfile`, `render.yaml` | Deployment config |
-| `screenshots/` | Sign-in, owner editing, share dialog, viewer read-only, dark mode, mobile |
+| `screenshots/` | Sign-in, owner editing, share dialog, viewer read-only, dark mode, mobile, version history, presence |
 
 ## Status
 **Working end to end:**
@@ -38,6 +38,12 @@ No passwords. Pick a user on the sign-in screen; use **Switch user** to change.
 - View-only access enforced in both the UI and the API; delete and sharing are owner-only.
 - Export to Markdown.
 
-**Intentionally not built:** real auth, real-time co-editing, comments, version history, attachments. Reasons are in `ARCHITECTURE.md`.
+**Stretch items built:**
+- **Version history:** browse, preview and restore earlier versions.
+- **Collaboration indicators:** who else is in the document, plus a notice when someone else changes it.
+- **Export to PDF.**
+- **Roles beyond basic access:** owner/editor/viewer with in-place role changes.
 
-**Next 2–4 hours:** conflict detection on save, Playwright UI test, magic-link auth, version history.
+**Intentionally not built:** real auth, simultaneous co-editing, comments/suggestion mode, attachments. Reasons are in `ARCHITECTURE.md` and the README's Scope section.
+
+**Next 2–4 hours:** conflict detection on save (409), anchored comments, magic-link auth, presence on Redis/WebSockets.

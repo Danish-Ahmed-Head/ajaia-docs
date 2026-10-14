@@ -29,6 +29,7 @@ window.addEventListener('unhandledrejection', (e) => {
 
 function sessionExpired() {
   if (!$('login').hidden) return;
+  clearInterval(state.presenceTimer); $('presence').innerHTML = ''; // no DELETE call: the session is already gone
   state.doc = null; state.dirty = false; clearTimeout(state.saveTimer);
   toast('Your session ended. Please sign in again.');
   showLogin();
@@ -91,6 +92,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setNav(fal
 $('logout').addEventListener('click', async () => {
   if (!(await flushSave())) return;
   await api('/api/logout', { method: 'POST' });
+  stopPresence();
   state.doc = null; location.hash = ''; showLogin();
 });
 
@@ -170,6 +172,7 @@ function mountEditor(content, editable) {
 
 async function openDoc(id) {
   $('editor-view').inert = true;
+  stopPresence();
   if (!(await flushSave())) {
     $('editor-view').inert = false;
     history.replaceState(null, '', `#/doc/${state.doc.id}`);
@@ -197,8 +200,86 @@ async function openDoc(id) {
   setStatus(`Saved ${fmtRelative(d.updated_at)}`, 'saved');
   updateWordCount();
   document.title = `${d.title} · Ajaia Docs`;
+  document.querySelector('.sheet-wrap').dataset.title = d.title;
+  $('remote-banner').hidden = true;
+  startPresence();
   refreshList();
 }
+
+// ---------- presence + "someone else changed this" ----------
+// Polling every 10 s: simple, works through any proxy, and is enough to show who's here. WebSockets/Yjs is the upgrade path.
+function startPresence() {
+  stopPresence();
+  const doc = state.doc;
+  const tick = async () => {
+    if (state.doc !== doc || document.hidden) return;
+    let p;
+    try { p = await api(`/api/docs/${doc.id}/presence`, { method: 'POST' }); } catch { return; }
+    if (state.doc !== doc) return;
+    renderPresence(p.others);
+    const theirs = new Date(p.updated_at).getTime(), ours = new Date(doc.updated_at).getTime();
+    if (theirs > ours && !state.dirty && !state.inFlight) {
+      $('remote-text').textContent = `${p.last_editor ?? 'Someone'} updated this document.`;
+      $('remote-banner').hidden = false;
+    }
+  };
+  tick();
+  state.presenceTimer = setInterval(tick, 10_000);
+}
+function stopPresence() {
+  clearInterval(state.presenceTimer);
+  if (state.doc) api(`/api/docs/${state.doc.id}/presence`, { method: 'DELETE' }).catch(() => {});
+  $('presence').innerHTML = '';
+}
+function renderPresence(others) {
+  $('presence').innerHTML = others.length
+    ? others.slice(0, 4).map((o) => avatar(o.name).replace('<span class="avatar', `<span title="${escapeHtml(o.name)} is viewing" class="avatar`)).join('')
+      + `<span class="presence-label">${others.length === 1 ? `${escapeHtml(others[0].name)} is here` : `${others.length} others here`}</span>`
+    : '';
+}
+$('remote-reload').addEventListener('click', () => openDoc(state.doc.id));
+
+// ---------- version history ----------
+let historyVersions = [], historySelected = null;
+async function selectVersion(index) {
+  const v = historyVersions[index];
+  historySelected = v;
+  for (const b of $('history-list').querySelectorAll('button')) b.setAttribute('aria-current', String(Number(b.dataset.i) === index));
+  const full = await api(`/api/docs/${state.doc.id}/versions/${v.id}`);
+  $('history-preview').innerHTML = full.content || '<p class="muted">This version is empty.</p>'; // content is sanitised on the server
+  $('history-meta').textContent = index === 0 ? 'This is the current version.' : `${v.author_name} · ${new Date(v.saved_at).toLocaleString()}`;
+  $('history-restore').hidden = state.doc.role === 'viewer';
+  $('history-restore').disabled = index === 0;
+}
+$('history-btn').addEventListener('click', async () => {
+  await flushSave();
+  historyVersions = await api(`/api/docs/${state.doc.id}/versions`);
+  $('history-list').innerHTML = historyVersions.length
+    ? historyVersions.map((v, i) => `<li><button type="button" data-i="${i}">${avatar(v.author_name)}
+        <span><b>${escapeHtml(fmtRelative(v.saved_at))}</b>
+        <small>${escapeHtml(v.note ? v.note.replace(/from \S+T\S+$/, 'from an earlier version') : v.author_name)}</small></span></button></li>`).join('')
+    : '<li class="list-empty">No versions yet. They appear after the first edit.</li>';
+  $('history-preview').innerHTML = '';
+  $('history-meta').textContent = '';
+  $('history-restore').hidden = true;
+  $('history-dialog').showModal();
+  if (historyVersions.length) await selectVersion(0);
+});
+$('history-list').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-i]'); if (b) selectVersion(Number(b.dataset.i));
+});
+$('history-restore').addEventListener('click', async () => {
+  if (!historySelected) return;
+  try {
+    await api(`/api/docs/${state.doc.id}/versions/${historySelected.id}/restore`, { method: 'POST' });
+    $('history-dialog').close();
+    toast(`Restored the version from ${new Date(historySelected.saved_at).toLocaleString()}`);
+    await openDoc(state.doc.id);
+  } catch (err) { toast(err.message); }
+});
+
+// ---------- export PDF: the print stylesheet prints only the document; the browser offers "Save as PDF" ----------
+$('pdf-btn').addEventListener('click', () => window.print());
 
 function renderMeta() {
   const d = state.doc;
@@ -232,10 +313,15 @@ async function save({ keepalive = false } = {}) {
   if (!title) { setStatus('Add a title to save', 'error'); return; }
   state.dirty = false; setStatus('Saving…', 'saving');
   const doc = state.doc;
+  state.inFlight = true; // tells the presence check that a newer server timestamp is our own save
   state.saving = api(`/api/docs/${doc.id}`, { method: 'PUT', body: { title, content: editor.getHTML() }, keepalive })
     .then((r) => {
       doc.title = title; doc.updated_at = r.updated_at;
-      if (state.doc === doc && !state.dirty) { setStatus('All changes saved', 'saved'); document.title = `${title} · Ajaia Docs`; }
+      if (state.doc === doc && !state.dirty) {
+        setStatus('All changes saved', 'saved');
+        document.title = `${title} · Ajaia Docs`;
+        document.querySelector('.sheet-wrap').dataset.title = title;
+      }
       refreshList();
     })
     .catch((err) => {
@@ -244,7 +330,8 @@ async function save({ keepalive = false } = {}) {
       setStatus(`Not saved: ${err.message}`, 'error');
       // Transient failures (offline, rate limit, server error) retry; validation errors wait for the user's next edit.
       if (err.status === 0 || err.status === 429 || err.status >= 500) state.saveTimer = setTimeout(save, 5000);
-    });
+    })
+    .finally(() => { state.inFlight = false; });
   await state.saving;
 }
 async function flushSave() {
@@ -295,6 +382,7 @@ $('delete-dialog').addEventListener('close', async (e) => {
   if (e.target.returnValue !== 'confirm') return;
   try {
     state.dirty = false; clearTimeout(state.saveTimer);
+    stopPresence();
     await api(`/api/docs/${state.doc.id}`, { method: 'DELETE' });
     toast('Document deleted');
     state.doc = null; location.hash = ''; document.title = 'Ajaia Docs';

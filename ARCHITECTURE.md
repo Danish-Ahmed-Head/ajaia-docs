@@ -50,12 +50,20 @@ The UI mirrors this (read-only banner, disabled toolbar, hidden Share and Delete
 | Cut | Why | Production path |
 |---|---|---|
 | Mocked auth | Allowed by the brief; spends the time on sharing logic instead | OAuth or magic link, signed sessions, invite-by-email |
-| Real-time co-editing | A half-built version would hurt more than help | Yjs + Tiptap Collaboration over WebSockets |
-| Version history, comments, attachments | Stretch items; one small stretch chosen instead (export to Markdown) | Snapshot table on save |
+| Simultaneous co-editing | A half-built version would hurt more than help; presence plus a "Load latest" notice covers awareness | Yjs + Tiptap Collaboration over WebSockets |
+| Comments, suggestion mode, attachments | Comments need anchored ranges that survive edits; too big to do well in the timebox | Tiptap comment marks + a `comments` table |
 | React / Next.js | One screen doesn't need it; it would add risk inside the timebox | Next.js 16 if this grows into a multi-page product |
 
+## Stretch items built after the core was finished
+| Item | Design | Trade-off |
+|---|---|---|
+| Version history | `document_versions` table. One person's autosaves are folded into one version per 10-minute session; a different author, a restore or an import starts a new version. Restore is itself recorded, so it can be undone | Stores full HTML per version (simple and fast to restore); a diff store would save space at scale |
+| Presence indicators | Each open document pings `/presence` every 10 s; the server keeps a 30 s in-memory list per document and returns who else is there plus the document's `updated_at`, which triggers the "updated this document" notice | In-memory, so a single instance only; polling, not WebSockets. Fine for a demo, and the upgrade path is Redis or Yjs awareness |
+| Export PDF | A print stylesheet hides the app and prints only the title and document; the browser's Save as PDF does the rest | No server-side PDF library to maintain; output depends on the browser |
+| Roles beyond basic access | Owner / editor / viewer with in-place role changes, all enforced in `loadDoc()` | No custom roles or per-section permissions |
+
 ## Next 2–4 hours
-1. Optimistic concurrency: send `updated_at` with each save and warn on conflicting edits.
-2. Playwright test for the UI flow (create → share → view-only).
+1. Optimistic concurrency: send `updated_at` with each save and return 409 on conflicting edits.
+2. Comments anchored to text ranges.
 3. Magic-link auth and invite-by-email for users who don't exist yet.
-4. Version history: a snapshot on each save, viewable and restorable.
+4. Move presence to Redis (or Yjs awareness over WebSockets) so it works across instances.

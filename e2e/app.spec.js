@@ -153,7 +153,92 @@ test('keyboard-only: sign in, create a doc and type without the mouse', async ({
   await page.keyboard.type('Keyboard doc');
   await page.keyboard.press('Enter');
   await page.keyboard.type('Typed without a mouse');
+  // Markdown shortcuts, typed key by key like a person would.
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('# Shortcut heading');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('- first point');
+  await expect(page.locator('#editor h1')).toHaveText('Shortcut heading');
+  await expect(page.locator('#editor ul li')).toHaveText('first point');
   await expect(page.locator('#save-status')).toHaveText('All changes saved');
+});
+
+test('version history: see who changed what and restore an older version', async ({ browser }) => {
+  const alice = await (await browser.newContext()).newPage();
+  const bob = await (await browser.newContext()).newPage();
+  await signIn(alice, 'Alice Owner');
+  await alice.locator('#new-doc').click();
+  await expect(alice.locator('#title')).toBeFocused();
+  await alice.keyboard.type('History demo');
+  await alice.keyboard.press('Enter');
+  await alice.keyboard.type('Original plan');
+  await expect(alice.locator('#save-status')).toHaveText('All changes saved');
+  const docPath = new URL(alice.url()).hash;
+  await alice.getByRole('button', { name: 'Share', exact: true }).click();
+  await alice.locator('#share-dialog').getByLabel('User').selectOption('bob@example.com');
+  await alice.locator('#share-dialog').getByRole('button', { name: 'Share' }).click();
+  await alice.locator('#share-dialog').getByRole('button', { name: 'Done' }).click();
+
+  await signIn(bob, 'Bob Editor');
+  await bob.goto(`/${docPath}`);
+  await bob.locator('#editor .tiptap').click();
+  await bob.keyboard.press('Control+A');
+  await bob.keyboard.type('Bob rewrote everything');
+  await expect(bob.locator('#save-status')).toHaveText('All changes saved');
+
+  await alice.reload();
+  await alice.getByRole('button', { name: 'History' }).click();
+  const items = alice.locator('#history-list button');
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toContainText('Bob Editor');
+  await expect(alice.locator('#history-restore')).toBeDisabled(); // newest = current version
+  await items.nth(1).click();
+  await expect(alice.locator('#history-preview')).toContainText('Original plan');
+  await alice.locator('#history-restore').click();
+  await expect(alice.locator('#editor .tiptap')).toContainText('Original plan');
+  await expect(alice.locator('#editor .tiptap')).not.toContainText('Bob rewrote');
+  await alice.context().close(); await bob.context().close();
+});
+
+test('presence: collaborators see who else is in the document and get told about their edits', async ({ browser }) => {
+  test.setTimeout(60_000);
+  const alice = await (await browser.newContext()).newPage();
+  const bob = await (await browser.newContext()).newPage();
+  await signIn(alice, 'Alice Owner');
+  await alice.locator('#owned a', { hasText: 'History demo' }).click();
+  const docPath = new URL(alice.url()).hash;
+  await signIn(bob, 'Bob Editor');
+  await bob.goto(`/${docPath}`);
+
+  await expect(bob.locator('#presence')).toContainText('Alice Owner is here');
+  await expect(alice.locator('#presence')).toContainText('Bob Editor is here', { timeout: 15_000 });
+
+  await bob.locator('#editor .tiptap').click();
+  await bob.keyboard.press('Control+End');
+  await bob.keyboard.type(' Bob added this line.');
+  await expect(bob.locator('#save-status')).toHaveText('All changes saved');
+
+  await expect(alice.locator('#remote-banner')).toBeVisible({ timeout: 15_000 });
+  await expect(alice.locator('#remote-text')).toHaveText('Bob Editor updated this document.');
+  await alice.getByRole('button', { name: 'Load latest' }).click();
+  await expect(alice.locator('#editor .tiptap')).toContainText('Bob added this line.');
+  await expect(alice.locator('#remote-banner')).toBeHidden();
+  await alice.context().close(); await bob.context().close();
+});
+
+test('export PDF prints only the document', async ({ page }) => {
+  await signIn(page, 'Alice Owner');
+  await page.locator('#owned a', { hasText: 'Launch plan' }).click();
+  await page.evaluate(() => { window.print = () => { window.__printed = true; }; });
+  await page.getByRole('button', { name: 'Export PDF' }).click();
+  expect(await page.evaluate(() => window.__printed)).toBe(true);
+
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('#sidebar')).toBeHidden();
+  await expect(page.locator('#toolbar')).toBeHidden();
+  await expect(page.locator('#editor h1')).toHaveText('Goals');
+  const printedTitle = await page.locator('.sheet-wrap').evaluate((el) => getComputedStyle(el, '::before').content);
+  expect(printedTitle).toBe('"Launch plan"');
 });
 
 test('expired session sends the user back to sign-in', async ({ page, context }) => {

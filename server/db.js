@@ -31,6 +31,17 @@ const SCHEMA = `
     PRIMARY KEY (doc_id, user_id)
   );
   CREATE INDEX IF NOT EXISTS shares_user_idx ON shares(user_id);
+  CREATE TABLE IF NOT EXISTS document_versions (
+    id SERIAL PRIMARY KEY,
+    doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    author_id INTEGER NOT NULL REFERENCES users(id),
+    note TEXT,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    saved_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS versions_doc_idx ON document_versions(doc_id, id DESC);
 `;
 
 /**

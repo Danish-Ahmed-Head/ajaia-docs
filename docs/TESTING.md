@@ -2,10 +2,10 @@
 
 ## One command
 ```bash
-npm run check      # ESLint + 21 API tests + production build
-npm run test:e2e   # 7 browser tests (Playwright, real Chrome, 3 users, in-memory DB)
+npm run check      # ESLint + 26 API tests + production build
+npm run test:e2e   # 10 browser tests (Playwright, real Chrome, 3 users, in-memory DB)
 ```
-Last run: 2026-10-14 11:40 PKT. `check` clean, 21/21 API tests, 7/7 E2E, three consecutive E2E runs with no flakes.
+Last run: 2026-10-14 12:10 PKT. `check` clean, 26/26 API tests, 10/10 E2E, three consecutive E2E runs with no flakes.
 
 ## What is covered
 
@@ -14,8 +14,9 @@ Last run: 2026-10-14 11:40 PKT. `check` clean, 21/21 API tests, 7/7 E2E, three c
 | API | `test/api.test.js` (7) | create, rename, edit, reopen; formatting kept; `<script>` and `onerror` stripped; validation (empty/long title, wrong types, 1 MB cap); 401/404/400 shapes; delete cascades |
 | API | `test/sharing.test.js` (4) | owner sees share list, others don't; re-share changes role; self/unknown/invalid role rejected; unshare revokes at once |
 | API | `test/security.test.js` (5) | forged/tampered/unsigned session cookies rejected; cookie flags; CSP and security headers; non-JSON bodies refused (415); login rate limit (429) |
+| API | `test/versions.test.js` (5) | version grouping per author/session; restore (recorded as a version); viewer can't restore; stranger 403; another document's version id = 404; presence (members see each other, leave, strangers refused) |
 | API | `test/convert.test.js` (5) | .txt escaping, Markdown subset, real generated .docx, unsupported types (415), corrupt .docx (422) |
-| E2E | `e2e/app.spec.js` (7) | full owner flow with reload; share → editor edits → viewer read-only; direct API write as viewer = 403; Markdown import; export; keyboard-only; no keystroke lands in the previous doc while a new one loads; expired session. Every test also fails on any console error |
+| E2E | `e2e/app.spec.js` (10) | full owner flow with reload; share → editor edits → viewer read-only; direct API write as viewer = 403; Markdown import; export Markdown and PDF (print layout checked); version history restore across two users; two-browser presence and update notice; keyboard-only incl. Markdown shortcuts; no keystroke lands in the previous doc while a new one loads; expired session. Single-browser tests also fail on any console error |
 
 ## Mutation check (do the tests actually catch bugs?)
 Four deliberate bugs were injected into the server one at a time; the suite failed each time, then was restored:

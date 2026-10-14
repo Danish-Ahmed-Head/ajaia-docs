@@ -137,10 +137,86 @@ export function createApp(db, { sessionSecret, production = false }) {
       if (typeof content !== 'string') throw new HttpError(400, 'Content must be an HTML string');
       if (content.length > MAX_CONTENT) throw new HttpError(413, 'Document too large');
     }
+    const newTitle = title !== undefined ? title.trim() : doc.title;
+    const newContent = content !== undefined ? clean(content) : doc.content;
     const row = await db.one(
       'UPDATE documents SET title = $1, content = $2, updated_at = now() WHERE id = $3 RETURNING updated_at',
-      [title !== undefined ? title.trim() : doc.title, content !== undefined ? clean(content) : doc.content, doc.id]);
+      [newTitle, newContent, doc.id]);
+    await recordVersion(doc.id, req.user.id, newTitle, newContent);
     res.json({ ok: true, updated_at: row.updated_at });
+  });
+
+  // --- version history ---
+  // Autosave runs every few seconds, so one person's continuous editing is folded into a single version
+  // per 10-minute session. A different author, a restore or an import always starts a new version.
+  async function recordVersion(docId, authorId, title, content, note = null) {
+    if (!note) {
+      const merged = await db.one(`
+        UPDATE document_versions SET title = $3, content = $4, saved_at = now()
+        WHERE id = (SELECT id FROM document_versions WHERE doc_id = $1 ORDER BY id DESC LIMIT 1)
+          AND author_id = $2 AND note IS NULL AND started_at > now() - interval '10 minutes'
+        RETURNING id`, [docId, authorId, title, content]);
+      if (merged) return;
+    }
+    await db.query('INSERT INTO document_versions (doc_id, title, content, author_id, note) VALUES ($1, $2, $3, $4, $5)',
+      [docId, title, content, authorId, note]);
+  }
+
+  app.get('/api/docs/:id/versions', requireUser, async (req, res) => {
+    const { doc } = await loadDoc(req.params.id, req.user);
+    res.json(await db.all(`
+      SELECT v.id, v.title, v.note, v.saved_at, u.name AS author_name
+      FROM document_versions v JOIN users u ON u.id = v.author_id
+      WHERE v.doc_id = $1 ORDER BY v.id DESC LIMIT 50`, [doc.id]));
+  });
+
+  const loadVersion = async (doc, rawVid) => {
+    const vid = Number.parseInt(rawVid, 10);
+    const v = Number.isInteger(vid) ? await db.one(`
+      SELECT v.id, v.title, v.content, v.note, v.saved_at, u.name AS author_name
+      FROM document_versions v JOIN users u ON u.id = v.author_id WHERE v.id = $1 AND v.doc_id = $2`, [vid, doc.id]) : null;
+    if (!v) throw new HttpError(404, 'Version not found');
+    return v;
+  };
+
+  app.get('/api/docs/:id/versions/:vid', requireUser, async (req, res) => {
+    const { doc } = await loadDoc(req.params.id, req.user);
+    res.json(await loadVersion(doc, req.params.vid));
+  });
+
+  app.post('/api/docs/:id/versions/:vid/restore', requireUser, async (req, res) => {
+    const { doc, role } = await loadDoc(req.params.id, req.user);
+    if (role === 'viewer') throw new HttpError(403, 'View-only access: you cannot restore versions');
+    const v = await loadVersion(doc, req.params.vid);
+    const row = await db.one('UPDATE documents SET title = $1, content = $2, updated_at = now() WHERE id = $3 RETURNING updated_at',
+      [v.title, v.content, doc.id]);
+    await recordVersion(doc.id, req.user.id, v.title, v.content, `Restored the version from ${new Date(v.saved_at).toISOString()}`);
+    res.json({ ok: true, updated_at: row.updated_at });
+  });
+
+  // --- presence: who else has this document open right now ---
+  // shortcut: in-memory, so it only works with a single server instance; move to Redis (or WebSockets) to scale out.
+  const presence = new Map(); // docId -> Map(userId -> { name, at })
+  const PRESENCE_TTL_MS = 30_000;
+  app.post('/api/docs/:id/presence', requireUser, async (req, res) => {
+    const { doc } = await loadDoc(req.params.id, req.user);
+    const here = presence.get(doc.id) ?? new Map();
+    presence.set(doc.id, here);
+    const now = Date.now();
+    here.set(req.user.id, { name: req.user.name, at: now });
+    for (const [uid, p] of here) if (now - p.at > PRESENCE_TTL_MS) here.delete(uid);
+    const last = await db.one(`SELECT u.name AS author_name FROM document_versions v JOIN users u ON u.id = v.author_id
+                               WHERE v.doc_id = $1 ORDER BY v.id DESC LIMIT 1`, [doc.id]);
+    res.json({
+      others: [...here].filter(([uid]) => uid !== req.user.id).map(([id, p]) => ({ id, name: p.name })),
+      updated_at: doc.updated_at,
+      last_editor: last?.author_name ?? null,
+    });
+  });
+  app.delete('/api/docs/:id/presence', requireUser, async (req, res) => {
+    const { doc } = await loadDoc(req.params.id, req.user);
+    presence.get(doc.id)?.delete(req.user.id);
+    res.json({ ok: true });
   });
 
   app.delete('/api/docs/:id', requireUser, async (req, res) => {
@@ -179,7 +255,9 @@ export function createApp(db, { sessionSecret, production = false }) {
     const name = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
     const html = clean(await fileToHtml(name, req.file.buffer));
     const title = name.replace(/\.[^.]+$/, '').trim().slice(0, MAX_TITLE) || 'Imported document';
-    res.status(201).json({ id: await createDoc(req.user, title, html) });
+    const id = await createDoc(req.user, title, html);
+    await recordVersion(id, req.user.id, title, html, `Imported from ${name}`);
+    res.status(201).json({ id });
   });
   app.get('/api/upload/supported', (_req, res) => res.json({ extensions: SUPPORTED, maxBytes: MAX_UPLOAD }));
 
