@@ -61,7 +61,8 @@ export function createApp(db, { sessionSecret, production = false }) {
   });
   const requireUser = (req, _res, next) => next(req.user ? undefined : new HttpError(401, 'Not signed in'));
 
-  app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  // `db` lets a deployer confirm production is on Postgres, not the in-memory fallback.
+  app.get('/api/health', (_req, res) => res.json({ ok: true, db: db.kind }));
   app.get('/api/users', async (_req, res) => {
     res.json(await db.all('SELECT id, name, email FROM users ORDER BY id'));
   });

@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import pg from 'pg';
-import { PGlite } from '@electric-sql/pglite';
 
 const SEED_USERS = [
   ['Alice Owner', 'alice@example.com'],
@@ -57,6 +56,8 @@ export async function createDb({ url, dataDir } = {}) {
     query = (text, params) => pool.query(text, params);
     close = () => pool.end();
   } else {
+    // Loaded only when needed, so production (Postgres) never pays for PGlite's WASM at cold start.
+    const { PGlite } = await import('@electric-sql/pglite');
     if (dataDir) fs.mkdirSync(path.dirname(dataDir), { recursive: true }); // PGlite only creates the leaf dir
     const lite = dataDir ? new PGlite(dataDir) : new PGlite();
     query = (text, params) => lite.query(text, params);
@@ -68,5 +69,5 @@ export async function createDb({ url, dataDir } = {}) {
   }
   const one = async (text, params) => (await query(text, params)).rows[0] ?? null;
   const all = async (text, params) => (await query(text, params)).rows;
-  return { query, one, all, close };
+  return { query, one, all, close, kind: url ? 'postgres' : 'pglite' };
 }

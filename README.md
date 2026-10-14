@@ -6,7 +6,7 @@ Built for the Ajaia AI-Native Full Stack Developer assessment as one focused, te
 
 | | |
 |---|---|
-| **Live demo** | _<add Render URL>_ (free tier: the first load after 15 min idle takes about a minute) |
+| **Live demo** | _<add Vercel URL>_ |
 | **Walkthrough video** | see [`VIDEO_URL.txt`](VIDEO_URL.txt) |
 | **Test accounts** | no passwords. Pick **Alice**, **Bob** or **Carol** on the sign-in screen |
 
@@ -235,14 +235,20 @@ Common status codes: `400` invalid input · `401` not signed in · `403` not all
 
 ## Deploy
 
-**Recommended (free): Render web service + Neon Postgres.** The included [`render.yaml`](render.yaml) sets everything except the database URL.
+**Live setup (free, no card): Vercel + Neon Postgres.** [`vercel.json`](vercel.json) builds the frontend to `dist/` (served from Vercel's CDN with security headers) and runs the Express API as one Vercel Function ([`api/index.js`](api/index.js)) in Portland, next to the Neon database in Oregon.
 
-1. Create a free project at [neon.com](https://neon.com) and copy its connection string.
-2. Open the Render Blueprint link: https://render.com/deploy?repo=https://github.com/Danish-Ahmed-Head/ajaia-docs
-3. Paste the Neon string into `DATABASE_URL`. `SESSION_SECRET` is generated for you, and `NODE_ENV` is already `production`.
-4. Check `/api/health` returns `{"ok":true}`. Tables and demo users are created on first start.
+1. Create a free Neon project (region **AWS US West 2, Oregon**) and copy its **pooled** connection string.
+2. Import the repo at https://vercel.com/new and keep the settings from `vercel.json`.
+3. Add two environment variables:
+   - `DATABASE_URL`: the Neon string
+   - `SESSION_SECRET`: 64 random hex characters, generated with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+4. Deploy. Then check `/api/health` returns `{"ok":true,"db":"postgres"}`. Tables and demo users are created on first request.
 
-A [`Dockerfile`](Dockerfile) is included for any container host. Other options compared (VPS with Coolify, Railway, Vercel, Fly.io) are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+**Alternatives:**
+- Render: [`render.yaml`](render.yaml) included. It's free, but Render may ask for card verification.
+- Any container host: [`Dockerfile`](Dockerfile) included.
+
+All options are compared in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ---
 
@@ -258,8 +264,9 @@ The brief asked for deliberate scope cuts. These are the ones I made and why:
 | Conflict merging | Saves are last-write-wins; the update notice makes this visible | Send `updated_at` with each save and return 409 on conflicts |
 
 **Known limitations:**
-- Presence is kept in server memory, so it works with one server instance. Redis or WebSockets would be needed to scale out.
-- On Render's free tier the first request after 15 idle minutes takes about a minute.
+- Presence is kept in server memory. On Vercel, requests can land on different function instances, so an avatar can occasionally be missing. Redis or WebSockets would make it exact.
+- Neon's free database sleeps after 5 idle minutes, so the first request after a pause can take a second or two longer.
+- Rate limits are also per function instance on Vercel, so they are a best-effort guard, not a hard global limit.
 - `npm audit` reports 3 moderate findings in mammoth's command-line dependency (`argparse` → `sprintf-js`). This app only calls mammoth's library API, so that code path isn't reachable.
 
 ---

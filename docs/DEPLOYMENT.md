@@ -1,35 +1,41 @@
 # Deployment options
 
 **Requirement from the brief:** "a working deployment reviewers can access"; "do not require reviewers to pay."
-**Facts checked 2026-10-14 against official docs:** Render free web services sleep after 15 minutes idle (about a minute cold start), have an ephemeral filesystem, and allow no persistent disks. Neon free keeps 1 GB per project; its compute suspends after 5 minutes idle and data is not deleted at the limit.
 
-| Option | Cost | Data survives? | Cold start | Effort | Fit |
+**Facts checked 2026-10-14 against official docs and signup pages:**
+- **Vercel Hobby** is free for personal projects; its signup page has no card field; Express runs as a single function.
+- **Render free** sleeps after 15 minutes idle. It asked a Pakistan signup for card verification, which Render staff describe as an anti-abuse check with no alternative.
+- **Neon free** gives 1 GB per project; compute suspends after 5 minutes idle; data is never deleted at the limit.
+- **Hugging Face Docker Spaces** now need a paid plan. **Koyeb** needs a card.
+
+| Option | Cost | Card? | Data survives? | Effort | Verdict |
 |---|---|---|---|---|---|
-| **A. Render (web) + Neon (Postgres)** | $0 | Yes (Neon) | about 1 min after 15 min idle | Low: `render.yaml` included | **Recommended.** Reviewer can open it any time; the data is real Postgres |
-| B. Docker on a VPS you already have (Hetzner/Contabo + Coolify) | Your existing server cost | Yes | None | Medium; you already run this stack for Barakah Abaya | Best demo speed and shows DevOps skill, but ties up a server and needs a domain/TLS |
-| C. Railway | Trial credit only | Yes | None while credit lasts | Low | Rejected: can lapse during review |
-| D. Vercel | $0 | Needs external DB | Serverless | Medium: Express must be adapted | Rejected: wrong shape for long-lived Express + uploads |
-| E. Fly.io | No free tier for new accounts | n/a | n/a | n/a | Rejected |
+| **A. Vercel (app) + Neon (Postgres)** | $0 | No | Yes (Neon) | Low: `vercel.json` + `api/index.js` included | **Live deployment.** No card, fast CDN for the pages, functions in Portland next to Neon (Oregon) |
+| B. Render (web) + Neon | $0 | Asked for one | Yes | Low: `render.yaml` included | Good if you have a card that passes verification; about a 1-minute cold start after 15 min idle |
+| C. Docker on your own VPS (Coolify/Caddy) | Your server cost | n/a | Yes | Medium: `Dockerfile` included | Always warm; needs your own server and a domain. Don't use a client's server |
+| D. Hugging Face Docker Space | Paid plan required | — | — | — | Rejected |
+| E. Koyeb / Railway / Fly.io | Card or trial only | Yes | — | — | Rejected |
 
-## Recommendation
-**A for the submission**, because it costs nothing, survives restarts, and the README warns reviewers about the cold start. Keep **B** as the backup if reviewers want an always-warm URL: you already have the Coolify setup from Barakah Abaya.
-
-## Option A, step by step
-1. **Neon:** create a project → copy the connection string (`postgres://…?sslmode=require`).
-2. **GitHub:** create a private or public repo and push this folder.
-3. **Render:** open https://render.com/deploy?repo=https://github.com/Danish-Ahmed-Head/ajaia-docs (or New → Blueprint → select the repo). `render.yaml` is picked up automatically.
-4. The Blueprint sets `NODE_ENV=production` and generates `SESSION_SECRET` for you. The only value you paste is:
-   - `DATABASE_URL` = the Neon connection string (never committed)
-5. Verify: open `/api/health` → `{"ok":true}`; sign in as Alice; create a doc; redeploy; confirm it persists.
+## Option A: Vercel + Neon, step by step
+1. **Neon** (https://console.neon.tech): create a project in **AWS US West 2 (Oregon)**, then **Connect** → copy the **pooled** connection string. Never commit it.
+2. **Vercel** (https://vercel.com/signup → Continue with GitHub), then **Add New → Project** (https://vercel.com/new) → import `Danish-Ahmed-Head/ajaia-docs`.
+3. On the configure screen, leave Framework, Build and Output as they are (`vercel.json` sets them). Open **Environment Variables** and add:
+   - `DATABASE_URL`: the Neon string
+   - `SESSION_SECRET`: generate locally with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and paste the output
+4. **Deploy**. When it's done, open `https://<your-app>.vercel.app/api/health`. It must show `{"ok":true,"db":"postgres"}`. If it shows `"db":"pglite"`, `DATABASE_URL` is missing; add it and redeploy.
+5. Sign in as Alice, create a document, refresh. It should persist.
 6. Put the URL into `README.md` and `SUBMISSION.md`.
 
+## Option B: Render
+Open https://render.com/deploy?repo=https://github.com/Danish-Ahmed-Head/ajaia-docs. The Blueprint (`render.yaml`) generates `SESSION_SECRET`; paste `DATABASE_URL` from Neon.
+
 ## Production checklist
-- [ ] `SESSION_SECRET` set (the server refuses to boot in production without it)
-- [ ] `DATABASE_URL` points at Neon, not local
-- [ ] HTTPS only (Render provides it; cookies are `Secure` when `NODE_ENV=production`)
-- [ ] Health check path `/api/health` configured
-- [ ] No secrets in git (`git log -p | grep -i secret` is clean)
-- [ ] Cold-start warning is in the README
+- [ ] `SESSION_SECRET` set (the server refuses to start in production without it)
+- [ ] `/api/health` reports `"db":"postgres"`, not `"pglite"`
+- [ ] HTTPS only (both Vercel and Render provide it; cookies are `Secure` in production)
+- [ ] Security headers present on pages and API (`curl -I https://<app>/` shows `content-security-policy`)
+- [ ] No secrets in git
 
 ## Known limits of the demo deployment
-Mocked auth means anyone with the URL can sign in as any seeded user. That's acceptable for a review build, since the brief allows it, and must not be used for real data.
+- Mocked sign-in means anyone with the URL can act as a demo user. That's acceptable for a review build, since the brief allows it; don't use it for real data.
+- On Vercel, presence and rate limits are held in memory per function instance, so they are best-effort. Redis (Upstash) would make them exact.

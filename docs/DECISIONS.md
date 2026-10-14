@@ -57,9 +57,10 @@
 
 | Option | Evidence | Verdict |
 |---|---|---|
-| **Render free web service** | 750 instance-hours per month; spins down after 15 minutes idle with about a 1-minute cold start; deploys from GitHub; no card needed for the free service | **Accepted.** The cold start is documented in the README so reviewers aren't surprised |
+| Render free web service | 750 instance-hours per month; spins down after 15 minutes idle with about a 1-minute cold start; deploys from GitHub | First choice, then **replaced at 12:20**: signing up from Pakistan asked for card verification. Render staff describe the card check as anti-abuse with no alternative. Config kept as an alternative |
+| **Vercel Hobby (accepted, 12:20)** | Free, personal projects; signup has no card field (checked on vercel.com/signup); Express runs as a single Vercel Function; static files go to the CDN; function region selectable (pdx1 next to Neon Oregon) | **Accepted.** Trade-offs: in-memory presence and rate limits are per instance, so they are best-effort |
 | Railway | Trial credit only, not a permanent free tier | Rejected (R7) |
-| Vercel | Serverless functions; fine, but Express + multipart uploads fit a long-running server better | Rejected for this shape of app |
+| (earlier note) Vercel | Originally set aside because a long-running server fits Express + uploads better. Re-checked: uploads are ≤ 2 MB (inside the function body limit) and Express is officially supported | Superseded by the 12:20 decision above |
 | Fly.io | No free tier for new accounts | Rejected (R7) |
 
 ## ADR-005: Upload handling and security
@@ -86,4 +87,5 @@ Mocked auth (pick a seeded user; httpOnly cookie) is **accepted**, because the b
 | 11:00 | Claude, approved by Danish | v1 build: Express 4, SQLite, `contenteditable` | Fastest path to working end-to-end slice |
 | 11:12 | Claude | v1 verified in browser, 3/3 tests passing | Baseline before research |
 | 11:15 | Danish | Requested official-docs research, stable versions only, full SDLC docs | Raise quality and traceability |
+| 12:20 | Danish (blocker) → Claude (research) | ADR-004 changed: Render → Vercel | Render required card verification for a Pakistan signup; Vercel Hobby needs no card. Verified on the signup page and official docs |
 | 11:17 | Claude, approved by Danish | ADR-001 to ADR-007 above; v2 = Tiptap 3, Express 5, Postgres (Neon) + PGlite, multer 2 | Evidence above: v1 had CVE-affected multer, deprecated editor API, and non-durable hosting storage |

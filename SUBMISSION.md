@@ -1,7 +1,7 @@
 # Submission: Danish Ahmed, AI-Native Full Stack Developer (Ajaia)
 
 ## Links
-- **Live app:** _<Render URL>_. The first load after idle can take about a minute (free tier).
+- **Live app:** _<Vercel URL>_
 - **Walkthrough video:** in `VIDEO_URL.txt`
 - **Source:** https://github.com/Danish-Ahmed-Head/ajaia-docs (and this folder)
 
@@ -26,7 +26,8 @@ No passwords. Pick a user on the sign-in screen; use **Switch user** to change.
 | `docs/SDLC.md` | Process record: phases, who/when/what/why, defect log |
 | `SUBMISSION.md` | This file |
 | `VIDEO_URL.txt` | Walkthrough video link |
-| `Dockerfile`, `render.yaml` | Deployment config |
+| `vercel.json`, `api/index.js` | Live deployment (Vercel + Neon) |
+| `Dockerfile`, `render.yaml` | Alternative deployment configs |
 | `screenshots/` | Sign-in, owner editing, share dialog, viewer read-only, dark mode, mobile, version history, presence |
 
 ## Status

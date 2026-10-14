@@ -5,7 +5,7 @@ export default [
   { ignores: ['dist/', 'data/', 'node_modules/', 'test-results/', 'playwright-report/'] },
   js.configs.recommended,
   {
-    files: ['server/**/*.js', 'test/**/*.js', '*.config.js'],
+    files: ['server/**/*.js', 'api/**/*.js', 'test/**/*.js', '*.config.js'],
     languageOptions: { globals: globals.node },
   },
   {
