@@ -5,7 +5,7 @@
 npm run check      # ESLint + 38 API tests + production build
 npm run test:e2e   # 17 browser tests (Playwright, real Chrome, 3 users, in-memory DB)
 ```
-Last run: 2026-10-14 14:00 PKT. `check` clean, 38/38 API tests, 17/17 E2E. Live site (https://ajaia-docs-three-pi.vercel.app): 21/21 smoke checks (roles, sanitising, sharing, versions, presence, import, security headers).
+Last run: 2026-10-14 13:39 PKT. `check` clean, 38/38 API tests, 17/17 E2E. Live site (https://ajaia-docs-three-pi.vercel.app): 21/21 smoke checks (roles, sanitising, sharing, versions, presence, import, security headers).
 
 ## What is covered
 
@@ -16,7 +16,7 @@ Last run: 2026-10-14 14:00 PKT. `check` clean, 38/38 API tests, 17/17 E2E. Live 
 | API | `test/security.test.js` (5) | forged/tampered/unsigned session cookies rejected; cookie flags; CSP and security headers; non-JSON bodies refused (415); login rate limit (429) |
 | API | `test/versions.test.js` (5) | version grouping per author/session; restore (recorded as a version); viewer can't restore; stranger 403; another document's version id = 404; presence (members see each other, leave, strangers refused) |
 | API | `test/convert.test.js` (5) | .txt escaping, Markdown subset, real generated .docx, unsupported types (415), corrupt .docx (422) |
-| E2E | `e2e/app.spec.js` (10) | full owner flow with reload; share → editor edits → viewer read-only; direct API write as viewer = 403; Markdown import; export Markdown and PDF (print layout checked); version history restore across two users; two-browser presence and update notice; keyboard-only incl. Markdown shortcuts; no keystroke lands in the previous doc while a new one loads; expired session. Single-browser tests also fail on any console error |
+| E2E | `e2e/app.spec.js` (17) | full owner flow with reload; share → editor edits → viewer read-only; direct API write as viewer = 403; Markdown import; export Markdown and PDF (print layout checked); version history restore across two users; two-browser presence and update notice; keyboard-only incl. Markdown shortcuts; no keystroke lands in the previous doc while a new one loads; expired session; review regressions (delete dialog Escape, switch user, access downgrade, nested Markdown export); UX (drop-to-import, Ctrl+S, compact phone top bar, 44 px touch targets). Single-browser tests also fail on any console error |
 
 ## Mutation check (do the tests actually catch bugs?)
 Four deliberate bugs were injected into the server one at a time; the suite failed each time, then was restored:

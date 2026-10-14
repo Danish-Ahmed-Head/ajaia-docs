@@ -16,7 +16,7 @@
 | AI output | What I did | Why |
 |---|---|---|
 | First build used `contenteditable` + `execCommand` | **Replaced** with Tiptap 3 | Browser check showed invalid HTML (`<ul>` inside `<p>`); `execCommand` is deprecated |
-| First build pinned multer 1.4.5-lts and Express 4 | **Upgraded** to multer 2.4 and Express 5.3 | Official multer releases list 13 CVEs fixed in 2.x; Express 5 is the current stable major |
+| First build pinned multer 1.4.5-lts and Express 4 | **Upgraded** to multer 2.4 and Express 5 | Official multer releases list 13 CVEs fixed in 2.x; Express 5 is the current stable major |
 | First build used SQLite on the app server | **Replaced** with Postgres (Neon) | Render's free tier docs: ephemeral filesystem, no disks. Reviewers would find an empty app later |
 | Lexical, BlockNote, Next.js as options | **Rejected** | Lexical and BlockNote are pre-1.0; Next.js adds risk without product value at this scope |
 | Toolbar state code | **Fixed a bug** the AI wrote (`{ level }` used inside its own initialiser) | Caught by reading the browser console; it blocked every edit, including Enter |

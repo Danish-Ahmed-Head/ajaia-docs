@@ -305,6 +305,8 @@ screenshots/      Images used in this README
 | [`docs/TESTING.md`](docs/TESTING.md) | Test strategy, the mutation check, and a manual test script |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Hosting options compared and step-by-step deployment |
 | [`SUBMISSION.md`](SUBMISSION.md) | What's included in the submission |
+| [`docs/ieee/`](docs/ieee/00-INDEX.md) | Phase documents structured after IEEE / ISO/IEC/IEEE standards: project plan (16326), requirements with use cases (29148), design (1016), test documentation (29119-3). Includes the process mind map, workflow, use-case, sequence, ER, state and Gantt diagrams |
+| [`docs/CODE_WALKTHROUGH.md`](docs/CODE_WALKTHROUGH.md) | Every file and library function explained |
 
 ---
 

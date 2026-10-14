@@ -16,10 +16,10 @@ Postgres (Neon in production · PGlite in dev/tests: same SQL)
 ## Stack
 | Layer | Choice (stable versions) | Why |
 |---|---|---|
-| Editor | Tiptap 3.32 (ProseMirror), StarterKit | Schema-enforced, well-formed HTML; covers bold, italic, underline, strike, H1–H3, lists, quote and undo out of the box; standard path to Yjs collaboration |
+| Editor | Tiptap 3.31.4 (ProseMirror), StarterKit | Schema-enforced, well-formed HTML; covers bold, italic, underline, strike, H1–H3, lists, quote and undo out of the box; standard path to Yjs collaboration |
 | Frontend | Vanilla JS bundled by Vite 8.3 | No framework needed for one screen; small and fast to review |
-| API | Express 5.3 | Async errors go to the error handler natively, so there's no try/catch boilerplate |
-| DB | Postgres: `pg` 8.23 (Neon) / PGlite 0.5.9 (dev, tests) | Durable on a free host. Tests run the same SQL dialect as production with zero setup |
+| API | Express 5.2.1 | Async errors go to the error handler natively, so there's no try/catch boilerplate |
+| DB | Postgres: `pg` 8.23 (Neon) / PGlite 0.5.8 (dev, tests) | Durable on a free host. Tests run the same SQL dialect as production with zero setup |
 | Upload | multer 2.4 (memory, 2 MB, 1 file), mammoth 1.13 | Current, CVE-patched upload handling; .docx is what teams actually have |
 
 ## Data model

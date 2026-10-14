@@ -77,7 +77,7 @@ Mocked auth (pick a seeded user; httpOnly cookie) is **accepted**, because the b
 
 ## ADR-007: Testing
 
-`node:test` (built in, stable) running real HTTP requests against the Express app, backed by in-memory PGlite. This covers role enforcement, sanitisation, upload and validation. A Playwright UI test is deferred and listed under next steps.
+`node:test` (built in, stable) running real HTTP requests against the Express app, backed by in-memory PGlite. This covers role enforcement, sanitisation, upload and validation. Playwright browser tests were first deferred, then added at 11:37 (`e2e/app.spec.js`, now 17 tests in real Chrome).
 
 ---
 
@@ -87,5 +87,6 @@ Mocked auth (pick a seeded user; httpOnly cookie) is **accepted**, because the b
 | 11:00 | Claude, approved by Danish | v1 build: Express 4, SQLite, `contenteditable` | Fastest path to working end-to-end slice |
 | 11:12 | Claude | v1 verified in browser, 3/3 tests passing | Baseline before research |
 | 11:15 | Danish | Requested official-docs research, stable versions only, full SDLC docs | Raise quality and traceability |
+| 11:30 | Claude, approved by Danish | Version policy tightened to "newest stable that is at least 7 days old". Pins became express 5.2.1, @tiptap/* 3.31.4, PGlite 0.5.8, vite 8.3.3 (versions quoted in the ADRs above were the npm `latest` at research time) | Brand-new releases have had no time to surface regressions or supply-chain issues |
 | 12:20 | Danish (blocker) → Claude (research) | ADR-004 changed: Render → Vercel | Render required card verification for a Pakistan signup; Vercel Hobby needs no card. Verified on the signup page and official docs |
 | 11:17 | Claude, approved by Danish | ADR-001 to ADR-007 above; v2 = Tiptap 3, Express 5, Postgres (Neon) + PGlite, multer 2 | Evidence above: v1 had CVE-affected multer, deprecated editor API, and non-durable hosting storage |
