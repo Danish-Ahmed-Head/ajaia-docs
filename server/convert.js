@@ -51,7 +51,13 @@ export async function fileToHtml(filename, buffer) {
   const ext = dot >= 0 ? filename.slice(dot).toLowerCase() : '';
   if (ext === '.txt') return textToHtml(buffer.toString('utf8'));
   if (ext === '.md') return markdownToHtml(buffer.toString('utf8'));
-  if (ext === '.docx') return (await mammoth.convertToHtml({ buffer })).value;
+  if (ext === '.docx') {
+    try {
+      return (await mammoth.convertToHtml({ buffer })).value;
+    } catch {
+      throw Object.assign(new Error('Could not read this .docx file. Is it a valid Word document?'), { status: 422 });
+    }
+  }
   const err = new Error(`Unsupported file type "${ext || filename}". Supported: ${SUPPORTED.join(', ')}`);
   err.status = 415;
   throw err;

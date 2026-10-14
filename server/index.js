@@ -1,12 +1,20 @@
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { createApp } from './app.js';
 import { createDb } from './db.js';
 
-// Production: DATABASE_URL (Neon Postgres). Local: PGlite persisted in ./data — no setup needed.
+const production = process.env.NODE_ENV === 'production';
+let sessionSecret = process.env.SESSION_SECRET;
+if (!sessionSecret) {
+  if (production) throw new Error('SESSION_SECRET is required in production');
+  sessionSecret = crypto.randomBytes(32).toString('hex'); // dev only: sessions reset when the server restarts
+}
+
+// Production: DATABASE_URL (Neon Postgres). Local: PGlite persisted in ./data, no setup needed.
 const db = await createDb({
   url: process.env.DATABASE_URL,
   dataDir: process.env.DATABASE_URL ? undefined : path.join(process.cwd(), 'data', 'pglite'),
 });
 const port = Number(process.env.PORT) || 3000;
-createApp(db).listen(port, () =>
-  console.log(`Ajaia Docs on http://localhost:${port} (${process.env.DATABASE_URL ? 'Postgres' : 'local PGlite'})`));
+createApp(db, { sessionSecret, production }).listen(port, () =>
+  console.log(`Ajaia Docs on http://localhost:${port} (${process.env.DATABASE_URL ? 'Postgres' : 'local PGlite'}, ${production ? 'production' : 'development'})`));

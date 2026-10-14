@@ -1,9 +1,12 @@
 import express from 'express';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import sanitizeHtml from 'sanitize-html';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fileToHtml, SUPPORTED } from './convert.js';
+import { sessions } from './session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MAX_TITLE = 200;
@@ -22,20 +25,35 @@ export class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
-/** @param {{one: Function, all: Function, query: Function}} db */
-export function createApp(db) {
+const limiter = (windowMs, limit, extra = {}) =>
+  rateLimit({ windowMs, limit, standardHeaders: 'draft-8', legacyHeaders: false,
+    handler: (_req, _res, next) => next(new HttpError(429, 'Too many requests, please slow down')), ...extra });
+
+/**
+ * @param {{one: Function, all: Function, query: Function}} db
+ * @param {{ sessionSecret: string, production?: boolean }} config
+ */
+export function createApp(db, { sessionSecret, production = false }) {
   const app = express();
+  const session = sessions(sessionSecret, { secure: production });
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD, files: 1 } });
+
+  if (production) app.set('trust proxy', 1); // behind Render's proxy: real client IP for rate limits, HTTPS for Secure cookies
+  app.disable('x-powered-by');
+  app.use(helmet({
+    contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null } },
+  }));
   app.use(express.json({ limit: '2mb' }));
 
-  // --- mocked auth (allowed by the brief): pick a seeded user; id kept in an httpOnly cookie ---
-  const readCookie = (req, name) => {
-    const m = (req.headers.cookie || '').split(/;\s*/).find((c) => c.startsWith(name + '='));
-    return m ? decodeURIComponent(m.slice(name.length + 1)) : null;
-  };
+  // Writes must be JSON or multipart: blocks form/text-encoded cross-site submissions (defence in depth with SameSite).
+  app.use('/api', (req, _res, next) =>
+    next(req.is(['application/json', 'multipart/form-data']) === false ? new HttpError(415, 'Unsupported content type') : undefined));
+  app.use('/api', limiter(60_000, 300)); // general ceiling per IP
+
+  // --- mocked auth (allowed by the brief): pick a seeded user; signed, httpOnly session cookie ---
   app.use('/api', async (req, _res, next) => {
-    const id = Number.parseInt(readCookie(req, 'uid'), 10);
-    req.user = Number.isInteger(id) ? await db.one('SELECT id, name, email FROM users WHERE id = $1', [id]) : null;
+    const id = session.read(req);
+    req.user = id ? await db.one('SELECT id, name, email FROM users WHERE id = $1', [id]) : null;
     next();
   });
   const requireUser = (req, _res, next) => next(req.user ? undefined : new HttpError(401, 'Not signed in'));
@@ -44,15 +62,16 @@ export function createApp(db) {
   app.get('/api/users', async (_req, res) => {
     res.json(await db.all('SELECT id, name, email FROM users ORDER BY id'));
   });
-  app.post('/api/login', async (req, res) => {
+  // Only failed attempts count, so normal switching between demo users is never blocked.
+  app.post('/api/login', limiter(15 * 60_000, 20, { skipSuccessfulRequests: true }), async (req, res) => {
     const email = String(req.body?.email ?? '').trim().toLowerCase();
     const user = await db.one('SELECT id, name, email FROM users WHERE email = $1', [email]);
     if (!user) throw new HttpError(404, 'Unknown user');
-    res.setHeader('Set-Cookie', `uid=${user.id}; Path=/; HttpOnly; SameSite=Lax`);
+    session.set(res, user.id);
     res.json(user);
   });
   app.post('/api/logout', (_req, res) => {
-    res.setHeader('Set-Cookie', 'uid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax');
+    session.clear(res);
     res.json({ ok: true });
   });
   app.get('/api/me', (req, res) => res.json(req.user));
@@ -151,7 +170,7 @@ export function createApp(db) {
   });
 
   // --- file upload -> new editable document ---
-  app.post('/api/upload', requireUser, upload.single('file'), async (req, res) => {
+  app.post('/api/upload', requireUser, limiter(10 * 60_000, 30), upload.single('file'), async (req, res) => {
     if (!req.file) throw new HttpError(400, 'No file provided (form field name: "file")');
     // multer decodes multipart filenames as latin1; restore UTF-8 names.
     const name = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
@@ -164,7 +183,6 @@ export function createApp(db) {
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Not found')));
   app.use(express.static(path.join(__dirname, '..', 'dist')));
 
-  // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
     if (err instanceof multer.MulterError) {
       const tooBig = err.code === 'LIMIT_FILE_SIZE';
