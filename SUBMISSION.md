@@ -15,7 +15,10 @@ No passwords. Pick a user on the sign-in screen; use **Switch user** to change.
 | Path | What it is |
 |---|---|
 | `server/`, `src/` | Source code: Express 5 + Postgres API; Tiptap 3 frontend built with Vite |
-| `test/api.test.js` | Automated API tests (`npm test`, 5 tests) |
+| `test/` | 21 API tests (`npm test`); `e2e/` 6 browser tests (`npm run test:e2e`) |
+| `docs/TESTING.md` | Test strategy, mutation check, 10-minute manual test script |
+| `docs/DEPLOYMENT.md` | Hosting options compared, step-by-step deploy, production checklist |
+| `docs/PLAN.md` | Task breakdown for the hardening iteration |
 | `README.md` | Local setup, run instructions, review script, deploy steps |
 | `ARCHITECTURE.md` | Architecture note: priorities, access model, trade-offs |
 | `AI_WORKFLOW.md` | AI workflow note |

@@ -119,6 +119,7 @@ test('export downloads Markdown that matches the document', async ({ page }) => 
 
 test('keyboard-only: sign in, create a doc and type without the mouse', async ({ page }) => {
   await page.goto('/'); // each Playwright test starts with fresh cookies, so this is the sign-in screen
+  await expect(page.getByRole('button', { name: /Alice Owner/ })).toBeVisible(); // user list loads async
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: /Alice Owner/ })).toBeFocused();
   await page.keyboard.press('Enter');

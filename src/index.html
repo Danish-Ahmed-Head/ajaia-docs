@@ -46,7 +46,7 @@
       <div id="editor-view" hidden>
         <header class="doc-header">
           <input id="title" class="title" maxlength="200" aria-label="Document title">
-          <span id="save-status" class="save-status"></span>
+          <span id="save-status" class="save-status" role="status" aria-live="polite"></span>
           <button id="share-btn">Share</button>
           <button id="export-btn" title="Download as Markdown">Export .md</button>
           <button id="delete-btn" class="danger">Delete</button>
@@ -72,7 +72,7 @@
           <button data-cmd="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
         </div>
         <div id="readonly-banner" class="banner" hidden>You have view-only access to this document.</div>
-        <article id="editor" class="editor"></article>
+        <article id="editor" class="editor" aria-label="Document content"></article>
       </div>
     </main>
   </div>
@@ -95,7 +95,7 @@
     </form>
   </dialog>
 
-  <div id="toast" class="toast" hidden></div>
+  <div id="toast" class="toast" role="alert" hidden></div>
   <script type="module" src="./app.js"></script>
 </body>
 </html>

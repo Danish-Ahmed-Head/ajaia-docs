@@ -31,13 +31,21 @@ Requires **Node.js 22.12 or newer**. No database setup is needed: without `DATAB
 ```bash
 npm install
 npm run dev        # builds the frontend, then serves http://localhost:3000
-npm test           # 5 API tests against in-memory Postgres (PGlite)
+npm run check      # lint + 21 API tests + production build
+npm run test:e2e   # 6 browser tests (Playwright, uses installed Google Chrome)
 ```
 
 | Env var | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | unset → PGlite in `./data/pglite` | Postgres connection string (production: Neon) |
+| `SESSION_SECRET` | random per start in dev | ≥32 chars; **required** when `NODE_ENV=production` |
+| `NODE_ENV` | unset | `production` turns on `Secure` cookies and proxy trust |
 | `PORT` | `3000` | HTTP port |
+
+Testing details and a 10-minute manual script: `docs/TESTING.md`. Deployment options: `docs/DEPLOYMENT.md`.
+
+## Security summary
+Signed HttpOnly session cookie · server-side role checks on every document route · server-side HTML allow-list sanitising · Helmet with CSP · rate limits (login, upload, global) · JSON/multipart-only writes · 2 MB upload cap and type allow-list · no secrets in the repo.
 
 Delete `./data/` to reset local data. The three users are re-seeded on start.
 
