@@ -60,8 +60,8 @@ Anything else returns HTTP 415 with the supported list. The limit is shown in th
 
 ## Deploy (free: Render + Neon)
 1. Create a free Neon project and copy its connection string.
-2. Push this repo to GitHub, then in Render choose **New → Blueprint** and select the repo (`render.yaml` is included).
-3. Paste the Neon string into the `DATABASE_URL` env var in the Render dashboard. Never commit it.
+2. Open the one-click Blueprint link in `docs/DEPLOYMENT.md` (repo: https://github.com/Danish-Ahmed-Head/ajaia-docs).
+3. Paste the Neon string into the `DATABASE_URL` env var in the Render dashboard (`SESSION_SECRET` is generated for you). Never commit it.
 4. Open `/api/health` to confirm the service is up. Tables and seed users are created automatically on first boot.
 
 `Dockerfile` is included for any container host as an alternative.

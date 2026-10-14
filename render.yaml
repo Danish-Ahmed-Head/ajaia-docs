@@ -1,14 +1,19 @@
-# Render Blueprint: one free web service. DATABASE_URL (Neon) is entered in the Render dashboard, never committed.
+# Render Blueprint: one free web service. Secrets are generated or entered in the Render dashboard, never committed.
 services:
   - type: web
     name: ajaia-docs
     runtime: node
     plan: free
-    buildCommand: npm ci && npm run build
+    # --include=dev: Vite is a build-time dependency and NODE_ENV=production would otherwise skip it.
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
         value: "22.12.0"
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true # Render creates a random value once; sessions stay valid across deploys
       - key: DATABASE_URL
-        sync: false
+        sync: false # paste the Neon connection string in the dashboard

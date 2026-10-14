@@ -3,7 +3,7 @@
 ## Links
 - **Live app:** _<Render URL>_. The first load after idle can take about a minute (free tier).
 - **Walkthrough video:** in `VIDEO_URL.txt`
-- **Source:** this folder (also _<GitHub URL>_)
+- **Source:** https://github.com/Danish-Ahmed-Head/ajaia-docs (and this folder)
 
 ## Test accounts
 No passwords. Pick a user on the sign-in screen; use **Switch user** to change.

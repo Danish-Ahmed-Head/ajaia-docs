@@ -17,11 +17,9 @@
 ## Option A, step by step
 1. **Neon:** create a project → copy the connection string (`postgres://…?sslmode=require`).
 2. **GitHub:** create a private or public repo and push this folder.
-3. **Render:** New → Blueprint → select the repo (`render.yaml` is picked up).
-4. Environment variables, entered in the dashboard only (never committed):
-   - `DATABASE_URL` = the Neon string
-   - `SESSION_SECRET` = 64 random hex characters (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
-   - `NODE_ENV` = `production`
+3. **Render:** open https://render.com/deploy?repo=https://github.com/Danish-Ahmed-Head/ajaia-docs (or New → Blueprint → select the repo). `render.yaml` is picked up automatically.
+4. The Blueprint sets `NODE_ENV=production` and generates `SESSION_SECRET` for you. The only value you paste is:
+   - `DATABASE_URL` = the Neon connection string (never committed)
 5. Verify: open `/api/health` → `{"ok":true}`; sign in as Alice; create a doc; redeploy; confirm it persists.
 6. Put the URL into `README.md` and `SUBMISSION.md`.
 
