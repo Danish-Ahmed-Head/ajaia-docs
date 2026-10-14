@@ -67,7 +67,8 @@ export async function createDb({ url, dataDir } = {}) {
   let exec, query, tx, close;
   if (url) {
     // idleTimeoutMillis < Neon's 5-minute auto-suspend, so we close idle sockets before Neon kills them.
-    const pool = new pg.Pool({ connectionString: url, max: 5, idleTimeoutMillis: 10_000 });
+    // Timeouts: fail fast with a 500 instead of hanging until the platform kills the function (e.g. Neon waking up).
+    const pool = new pg.Pool({ connectionString: url, max: 5, idleTimeoutMillis: 10_000, connectionTimeoutMillis: 5_000, statement_timeout: 10_000 });
     // Without a listener, an idle client dropped by the server (Neon suspend) emits an unhandled 'error' and kills the process.
     pool.on('error', (err) => console.error('Postgres idle client error (pool will reconnect):', err.message));
     exec = (sql) => pool.query(sql); // no params = simple protocol, which allows several statements in one round trip

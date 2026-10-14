@@ -97,8 +97,8 @@ npm run dev          # builds the frontend, then serves http://localhost:3000
 | `npm run dev` | Build the frontend and start the server |
 | `npm start` | Start the server (expects a built `dist/`) |
 | `npm run build` | Build the frontend with Vite into `dist/` |
-| `npm test` | 38 API tests against in-memory Postgres |
-| `npm run test:e2e` | 17 browser tests (Playwright, uses your installed Google Chrome) |
+| `npm test` | 40 API tests against in-memory Postgres |
+| `npm run test:e2e` | 18 browser tests (Playwright, uses your installed Google Chrome) |
 | `npm run lint` | ESLint |
 | `npm run check` | Lint + API tests + build: the gate run before every commit |
 
@@ -111,8 +111,8 @@ No Google Chrome? Run `npx playwright install chromium`, then `PW_CHANNEL=chromi
 ## Tests
 
 ```bash
-npm run check       # ESLint + 38 API tests + production build
-npm run test:e2e    # 17 end-to-end tests in real Chrome
+npm run check       # ESLint + 40 API tests + production build
+npm run test:e2e    # 18 end-to-end tests in real Chrome
 ```
 
 | Suite | Tests | Covers |

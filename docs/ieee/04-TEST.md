@@ -229,7 +229,7 @@ Install dependencies once:
 npm install
 ```
 
-Level 1 to 3, the full quality gate (lint, 38 API tests, production build):
+Level 1 to 3, the full quality gate (lint, 40 API tests, production build):
 
 ```bash
 npm run check

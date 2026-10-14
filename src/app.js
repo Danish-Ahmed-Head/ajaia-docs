@@ -91,6 +91,8 @@ $('user-list').addEventListener('click', async (e) => {
 // ---------- mobile drawer ----------
 const mobileNav = window.matchMedia('(max-width: 760px)');
 function setNav(open) {
+  // Closing the drawer makes it inert; move focus out first so keyboard users don't drop to <body>.
+  if (!open && mobileNav.matches && $('sidebar').contains(document.activeElement)) $('menu-btn').focus();
   $('app').classList.toggle('nav-open', open);
   $('menu-btn').setAttribute('aria-expanded', String(open));
   $('scrim').hidden = !open;
@@ -159,10 +161,14 @@ $('upload').addEventListener('change', (e) => {
 });
 
 // Drop a file anywhere to import it. Capture phase, so the editor doesn't also try to handle the drop.
-const isFileDrag = (e) => !$('app').hidden && e.dataTransfer?.types.includes('Files');
+// Every file drag is cancelled (otherwise the browser navigates to the file); it only imports when signed in
+// and no dialog is open, because a dialog acts on the current document and an import would switch it.
+const isFileDrag = (e) => e.dataTransfer?.types.includes('Files');
+const canImport = () => !$('app').hidden && !document.querySelector('dialog[open]');
 window.addEventListener('dragover', (e) => {
   if (!isFileDrag(e)) return;
-  e.preventDefault(); document.body.classList.add('dropping');
+  e.preventDefault();
+  document.body.classList.toggle('dropping', canImport());
 }, true);
 window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
 window.addEventListener('drop', (e) => {
@@ -170,7 +176,7 @@ window.addEventListener('drop', (e) => {
   if (!isFileDrag(e)) return;
   e.preventDefault(); e.stopPropagation();
   const file = e.dataTransfer.files[0];
-  if (file) importFile(file);
+  if (file && canImport()) importFile(file);
 }, true);
 
 async function importFile(file) {
@@ -410,7 +416,8 @@ $('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preve
 window.addEventListener('beforeunload', (e) => { if (state.dirty) { save({ keepalive: true }); e.preventDefault(); } });
 // Ctrl/Cmd+S is muscle memory: save now instead of opening the browser's "Save page" dialog.
 document.addEventListener('keydown', (e) => {
-  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's' || !state.doc) return;
+  // e.code, not e.key: works on any keyboard layout. Shift/Alt excluded: Ctrl+Shift+S is strikethrough.
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.code !== 'KeyS' || !state.doc) return;
   e.preventDefault();
   if (state.dirty) save(); else if (state.doc.role !== 'viewer') toast('All changes are saved automatically');
 });

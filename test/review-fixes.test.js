@@ -61,11 +61,18 @@ test('version history is capped per document when authors take turns', async () 
     assert.equal((await who(`/api/docs/${id}`, { method: 'PUT', body: { content: `<p>${i}</p>` } })).status, 200);
   }
   const list = await (await alice(`/api/docs/${id}/versions`)).json();
-  assert.equal(list.length, 50); // the API shows the latest 50
+  assert.equal(list.length, 100); // every stored version is reachable from the history list
   const total = await srv.db.one('SELECT count(*)::int AS n FROM document_versions WHERE doc_id = $1', [id]);
   assert.equal(total.n, 100); // stored history is capped at 100
 });
 
+test('an import too large to save later is refused up front (413), and nothing is created', async () => {
+  const before = (await (await alice('/api/docs')).json()).owned.length;
+  const big = 'word '.repeat(240_000); // 1.2 MB of text: under the 2 MB upload limit, over the 1M-character content limit
+  const r = await alice('/api/upload', { method: 'POST', body: fileForm(big, 'huge.txt') });
+  assert.equal(r.status, 413);
+  assert.equal((await (await alice('/api/docs')).json()).owned.length, before);
+});
 test('production refuses to start without DATABASE_URL (no silent throwaway database)', () => {
   const env = { PATH: process.env.PATH, NODE_ENV: 'production', SESSION_SECRET: 'x'.repeat(40) };
   assert.throws(() => execFileSync(process.execPath, ['server/index.js'], { env, stdio: 'pipe', timeout: 20_000 }),

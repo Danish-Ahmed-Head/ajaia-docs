@@ -13,12 +13,19 @@ test('session cookie is signed: tampered, forged or unsigned cookies are rejecte
   const alice = await loginAs(srv.base, 'alice@example.com');
   assert.equal((await asCookie(alice.cookie)).email, 'alice@example.com');
 
-  const [, sig] = alice.cookie.split('=')[1].split('.');
-  assert.equal(await asCookie(`sid=2.${sig}`), null); // swap the user id, keep Alice's signature
+  const [, iat, sig] = alice.cookie.split('=')[1].split('.');
+  assert.equal(await asCookie(`sid=2.${iat}.${sig}`), null); // swap the user id, keep Alice's signature
+  assert.equal(await asCookie(`sid=1.${Number(iat) + 1}.${sig}`), null); // extend the issue time
   assert.equal(await asCookie('sid=2'), null); // no signature
-  const forged = crypto.createHmac('sha256', 'wrong-secret').update('2').digest('base64url');
-  assert.equal(await asCookie(`sid=2.${forged}`), null); // signed with the wrong key
+  const forged = crypto.createHmac('sha256', 'wrong-secret').update(`2.${iat}`).digest('base64url');
+  assert.equal(await asCookie(`sid=2.${iat}.${forged}`), null); // signed with the wrong key
   assert.equal(await asCookie('sid=abc.def'), null);
+});
+
+test('session cookie expires on the server after 7 days even if the browser keeps it', async () => {
+  const old = Math.floor(Date.now() / 1000) - 8 * 24 * 60 * 60;
+  const sig = crypto.createHmac('sha256', SECRET).update(`1.${old}`).digest('base64url');
+  assert.equal(await asCookie(`sid=1.${old}.${sig}`), null);
 });
 
 test('session cookie attributes: HttpOnly, SameSite=Lax, Secure only in production', async () => {

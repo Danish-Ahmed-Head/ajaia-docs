@@ -52,8 +52,8 @@ mindmap
         Export Markdown and PDF
         Roles owner editor viewer
     Quality
-      38 API tests
-      17 browser tests
+      40 API tests
+      18 browser tests
       21 live smoke checks
       Two independent code reviews
       UI UX Pro Max audit

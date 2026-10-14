@@ -100,7 +100,7 @@ A factory, not a global app. Tests create a fresh app on an in-memory database f
 | `GET /api/docs/:id` | Share list only for the owner | Editors and viewers can't see who else has access |
 | `PUT /api/docs/:id` | Viewer → 403; validate types and sizes; `clean(content)`; `UPDATE … RETURNING updated_at`; `recordVersion` | Partial updates (title or content). `updated_at` is returned so the client knows the server's timestamp (the presence banner compares it) |
 | `recordVersion` | `UPDATE … WHERE id = (latest) AND same author AND note IS NULL AND started_at > now() - 10 min` else `INSERT` | Autosave fires every second or so. Without folding, history would have thousands of entries. One version per author per 10-minute session; a different author, a restore or an import always starts a new one. It's a single SQL statement, so "is the latest mine and recent?" and "update it" can't be split by another request |
-| `GET …/versions` | `LIMIT 50` | Bounded response |
+| `GET …/versions` | `LIMIT 100` (the stored cap) | Bounded response; every stored version is reachable |
 | `loadVersion` | `WHERE v.id = $1 AND v.doc_id = $2` | **IDOR guard:** a version id from another document is "not found", even if you can access *this* document (tested) |
 | `POST …/restore` | Viewer → 403; copy title/content back; record a version with a note | A restore can itself be undone |
 | presence | `Map(docId → Map(userId → {name, at}))`, 30 s TTL, prune on each ping | Shows who else has the document open. In memory by design (the `shortcut:` comment marks the limit). It also returns `updated_at` and the last editor for the "updated" banner |
@@ -270,4 +270,4 @@ Two reviewers read every line without seeing my reasoning. Every finding was che
   - Sidebar layout that becomes a drawer below 760 px.
   - A `@media print` block that prints only the document (Export PDF).
   - `prefers-reduced-motion` turns animations off.
-- **Tests:** 38 API tests (`test/*.test.js`) over real HTTP against in-memory Postgres, 17 Playwright browser tests (`e2e/`), and a live smoke script (21 checks) run against the deployed URL. See `docs/TESTING.md`.
+- **Tests:** 40 API tests (`test/*.test.js`) over real HTTP against in-memory Postgres, 18 Playwright browser tests (`e2e/`), and a live smoke script (21 checks) run against the deployed URL. See `docs/TESTING.md`.

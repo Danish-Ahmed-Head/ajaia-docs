@@ -123,8 +123,8 @@ The Gantt chart and actual times are in [00-INDEX.md](00-INDEX.md#8-timeline). M
 ## 8. Quality assurance gates
 
 Every iteration had to pass these before a commit:
-1. `npm run check`: ESLint, 38 API tests, Vite build.
-2. `npx playwright test`: 17 browser tests, failing on any console error.
+1. `npm run check`: ESLint, 40 API tests, Vite build.
+2. `npx playwright test`: 18 browser tests, failing on any console error.
 3. A browser check of the changed flow at desktop and phone widths.
 4. No secrets in the diff.
 
@@ -135,7 +135,7 @@ After deployment, the live smoke test (21 checks) runs against the production UR
 | Deliverable | Status |
 |---|---|
 | Source, README, architecture note, SUBMISSION.md | Done |
-| Tests (38 API, 17 E2E) | Done, passing |
+| Tests (40 API, 18 E2E) | Done, passing |
 | Live deployment | Done; latest 3 local commits await push approval |
 | AI workflow note | Drafted; Danish to rewrite in his own voice |
 | IEEE documentation set | Done (this folder) |

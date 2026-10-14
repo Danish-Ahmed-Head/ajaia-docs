@@ -87,11 +87,13 @@ export function createApp(db, { sessionSecret, production = false }) {
   app.get('/api/me', (req, res) => res.json(req.user));
 
   /** Resolve the caller's effective role ('owner' | 'editor' | 'viewer') or throw 404/403. Single access gate. */
-  async function loadDoc(rawId, user) {
+  // content is up to 1 MB, so only the routes that return or rewrite it load it (presence polls every 10 s).
+  async function loadDoc(rawId, user, { content = false } = {}) {
     const id = toId(rawId);
     if (!id) throw new HttpError(404, 'Document not found');
     const doc = await db.one(`
-      SELECT d.*, u.name AS owner_name, u.email AS owner_email, s.role AS share_role
+      SELECT d.id, d.title, d.owner_id, d.created_at, d.updated_at${content ? ', d.content' : ''},
+             u.name AS owner_name, u.email AS owner_email, s.role AS share_role
       FROM documents d
       JOIN users u ON u.id = d.owner_id
       LEFT JOIN shares s ON s.doc_id = d.id AND s.user_id = $2
@@ -122,7 +124,7 @@ export function createApp(db, { sessionSecret, production = false }) {
   });
 
   app.get('/api/docs/:id', requireUser, async (req, res) => {
-    const { doc, role } = await loadDoc(req.params.id, req.user);
+    const { doc, role } = await loadDoc(req.params.id, req.user, { content: true });
     const shares = role === 'owner'
       ? await db.all(`SELECT u.id, u.name, u.email, s.role FROM shares s JOIN users u ON u.id = s.user_id
                       WHERE s.doc_id = $1 ORDER BY u.name`, [doc.id])
@@ -132,7 +134,7 @@ export function createApp(db, { sessionSecret, production = false }) {
   });
 
   app.put('/api/docs/:id', requireUser, async (req, res) => {
-    const { doc, role } = await loadDoc(req.params.id, req.user);
+    const { doc, role } = await loadDoc(req.params.id, req.user, { content: true });
     if (role === 'viewer') throw new HttpError(403, 'View-only access: you cannot edit this document');
     const { title, content } = req.body ?? {};
     if (title === undefined && content === undefined) throw new HttpError(400, 'Nothing to update');
@@ -151,6 +153,7 @@ export function createApp(db, { sessionSecret, production = false }) {
       const updated = await t.one(
         'UPDATE documents SET title = $1, content = $2, updated_at = now() WHERE id = $3 RETURNING updated_at',
         [newTitle, newContent, doc.id]);
+      if (!updated) throw new HttpError(404, 'Document not found'); // deleted after loadDoc; rolls back
       await recordVersion(t, doc.id, req.user.id, newTitle, newContent);
       return updated;
     });
@@ -181,7 +184,7 @@ export function createApp(db, { sessionSecret, production = false }) {
     res.json(await db.all(`
       SELECT v.id, v.title, v.note, v.saved_at, u.name AS author_name
       FROM document_versions v JOIN users u ON u.id = v.author_id
-      WHERE v.doc_id = $1 ORDER BY v.id DESC LIMIT 50`, [doc.id]));
+      WHERE v.doc_id = $1 ORDER BY v.id DESC LIMIT ${MAX_VERSIONS_PER_DOC}`, [doc.id]));
   });
 
   const loadVersion = async (doc, rawVid) => {
@@ -205,6 +208,7 @@ export function createApp(db, { sessionSecret, production = false }) {
     const row = await db.tx(async (t) => {
       const updated = await t.one('UPDATE documents SET title = $1, content = $2, updated_at = now() WHERE id = $3 RETURNING updated_at',
         [v.title, v.content, doc.id]);
+      if (!updated) throw new HttpError(404, 'Document not found');
       await recordVersion(t, doc.id, req.user.id, v.title, v.content, `Restored the version from ${new Date(v.saved_at).toISOString()}`);
       return updated;
     });
@@ -232,7 +236,9 @@ export function createApp(db, { sessionSecret, production = false }) {
   });
   app.delete('/api/docs/:id/presence', requireUser, async (req, res) => {
     const { doc } = await loadDoc(req.params.id, req.user);
-    presence.get(doc.id)?.delete(req.user.id);
+    const here = presence.get(doc.id);
+    here?.delete(req.user.id);
+    if (here?.size === 0) presence.delete(doc.id); // don't keep an empty entry per document ever opened
     res.json({ ok: true });
   });
 
@@ -277,6 +283,8 @@ export function createApp(db, { sessionSecret, production = false }) {
     // multer decodes multipart filenames as latin1; restore UTF-8 names.
     const name = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
     const html = clean(await fileToHtml(name, req.file.buffer));
+    // Same limit as saving; otherwise an import could create a document that can never be saved again.
+    if (html.length > MAX_CONTENT) throw new HttpError(413, 'File is too large to edit once converted (limit: 1,000,000 characters)');
     const title = name.replace(/\.[^.]+$/, '').trim().slice(0, MAX_TITLE) || 'Imported document';
     const id = await db.tx(async (t) => {
       const created = (await t.one('INSERT INTO documents (title, content, owner_id) VALUES ($1, $2, $3) RETURNING id',

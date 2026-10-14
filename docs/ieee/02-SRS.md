@@ -411,7 +411,7 @@ Priorities map to the brief (REF-2): **Must** = required by the brief (R1 to R6)
 | FR-18 | A signed-in user with no role on a document shall get 403, and a missing or invalid document id shall get 404 | Must | Test |
 | FR-19 | `GET /api/docs/:id` shall return the share list only to the owner; editors and viewers receive an empty list | Should | Test |
 | FR-20 | Each save shall be recorded in version history. Consecutive saves by the same author within a 10-minute session shall be folded into one version; a different author, a restore or an import shall start a new version. At most 100 versions shall be kept per document | Should | Test |
-| FR-21 | Any user with access shall be able to list the latest 50 versions (newest first, with author, time and note) and preview a version's content. A version id that belongs to another document shall return 404 | Should | Test |
+| FR-21 | Any user with access shall be able to list every stored version (up to 100) (newest first, with author, time and note) and preview a version's content. A version id that belongs to another document shall return 404 | Should | Test |
 | FR-22 | Owners and editors shall be able to restore a version. The restore shall be recorded as a new version with the note "Restored the version from <timestamp>". Viewers shall get 403 | Should | Test |
 | FR-23 | While a document is open and the tab is visible, the client shall send a presence heartbeat every 10 seconds. The server shall report other users seen within the last 30 seconds, and the client shall show up to four avatars with "<name> is here" or "<n> others here" | Could | Test |
 | FR-24 | When the server copy is newer than the client copy and the user has no unsaved or in-flight changes, the client shall show "<last editor> updated this document." with a "Load latest" action, and shall warn once if the user starts editing while that notice is shown | Could | Test |
@@ -430,7 +430,7 @@ Priorities map to the brief (REF-2): **Must** = required by the brief (R1 to R6)
 
 | ID | Requirement | Source | Verification |
 |---|---|---|---|
-| NFR-SEC-01 | Session cookies shall be `<userId>.<HMAC-SHA256>` signed with `SESSION_SECRET` (at least 32 characters), verified in constant time, and set with `HttpOnly`, `SameSite=Lax` and, in production, `Secure`. Tampered, forged or unsigned cookies shall be treated as signed out | `server/session.js` | Test |
+| NFR-SEC-01 | Session cookies shall be `<userId>.<issuedAt>.<HMAC-SHA256>` signed with `SESSION_SECRET` (at least 32 characters), verified in constant time, and set with `HttpOnly`, `SameSite=Lax` and, in production, `Secure`. Tampered, forged, unsigned or more than 7-day-old cookies shall be treated as signed out (expiry enforced by the server, not only the browser) | `server/session.js` | Test |
 | NFR-SEC-02 | All stored HTML (saves and imports) shall be sanitised on the server with an allow-list: `p, br, h1, h2, h3, strong, b, em, i, u, s, ul, ol, li, blockquote, a, code, pre, hr`; links limited to `http`, `https`, `mailto`; every link forced to `rel="noopener noreferrer nofollow"` | `server/app.js` (`SANITIZE`) | Test |
 | NFR-SEC-03 | Responses shall carry `helmet` security headers including a Content-Security-Policy, `X-Content-Type-Options: nosniff` and frame protection; `X-Powered-By` shall be removed | `server/app.js` | Test |
 | NFR-SEC-04 | Rate limits per client IP: all `/api` traffic 600 requests per minute; failed logins 20 per 15 minutes (successful logins not counted); uploads 30 per 10 minutes. Exceeding a limit shall return 429 "Too many requests, please slow down" | `server/app.js` (`limiter`) | Test (login limit) and Inspection |
@@ -492,8 +492,8 @@ No load or latency targets were set in the brief, and none were measured. The fo
 
 | ID | Requirement | Source | Verification |
 |---|---|---|---|
-| NFR-MAIN-01 | `npm run check` (ESLint, 38 API tests, production build) shall pass before every commit | `docs/PLAN.md`, README | Test |
-| NFR-MAIN-02 | 17 Playwright E2E tests shall cover the main user flows; single-browser tests shall fail on any browser console error | README, `docs/TESTING.md` | Test |
+| NFR-MAIN-01 | `npm run check` (ESLint, 40 API tests, production build) shall pass before every commit | `docs/PLAN.md`, README | Test |
+| NFR-MAIN-02 | 18 Playwright E2E tests shall cover the main user flows; single-browser tests shall fail on any browser console error | README, `docs/TESTING.md` | Test |
 | NFR-MAIN-03 | Every technology choice shall be recorded with options and evidence in `docs/DECISIONS.md`, and defects in the `docs/SDLC.md` defect log | Repository docs | Inspection |
 | NFR-MAIN-04 | Access control shall live in one function (`loadDoc`) so a rule change is made in one place | `server/app.js` | Inspection |
 

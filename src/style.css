@@ -376,11 +376,16 @@ dialog h4 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px
 
 /* Touch screens get 44px tap targets (WCAG 2.5.5); mouse users keep the compact toolbar. */
 @media (pointer: coarse) {
-  .btn, .btn-sm, .toolbar select, .title { min-height: 44px; }
-  .btn-icon, .btn-icon.btn-sm, .doc-actions .btn { width: 44px; }
+  .btn, .btn-sm, .toolbar select, .title, .invite select, .share-list select { min-height: 44px; }
+  .btn-icon, .btn-icon.btn-sm { width: 44px; }
   .toolbar button { width: 44px; height: 44px; }
   .toolbar { gap: 4px; }
+  .drop-tip { display: none; } /* no drag and drop on touch screens */
 }
+/* Header actions are icon-only below 1180px; wider touch screens (tablets in landscape) keep their labels. */
+@media (pointer: coarse) and (max-width: 1180px) { .doc-actions .btn { width: 44px; } }
+/* The touch top bar is 61px (44px button + padding), so the sticky toolbar sits below it. */
+@media (pointer: coarse) and (max-width: 760px) { .toolbar { top: 67px; } }
 
 /* ---------- Export PDF: the browser's print-to-PDF prints only the document ---------- */
 @media print {

@@ -342,13 +342,39 @@ test('ux: dropping a file anywhere imports it; Ctrl+S saves without the browser 
   await expect(page.locator('#title')).toHaveValue('dropped');
   await expect(editor(page).locator('h1')).toHaveText('Dropped');
 
+  // Ctrl+S is handled by the app: the browser's default (Save page) is cancelled, even with nothing to save.
+  await page.evaluate(() => window.addEventListener('keydown', (e) => { window.lastKeyPrevented = e.defaultPrevented; }));
   await editor(page).click();
   await page.keyboard.press('End');
   await page.keyboard.type(' now');
   await page.keyboard.press('ControlOrMeta+s');
+  expect(await page.evaluate(() => window.lastKeyPrevented)).toBe(true);
   await expect(page.locator('#save-status')).toHaveText('All changes saved');
   await page.keyboard.press('ControlOrMeta+s');
   await expect(page.locator('#toast')).toContainText('saved automatically');
+  await expect(page.locator('#toast')).toBeHidden({ timeout: 10_000 });
+  // Ctrl+Shift+S is strikethrough, not save: no "saved" toast.
+  await page.keyboard.press('ControlOrMeta+Shift+s');
+  await expect(page.locator('#toast')).toBeHidden();
+});
+
+test('ux: a file dropped while a dialog is open is ignored, so the dialog keeps acting on its own document', async ({ page }) => {
+  await signIn(page, 'Alice Owner');
+  await page.getByRole('button', { name: 'New document' }).first().click();
+  await page.locator('#title').fill('Keep me');
+  await expect(page.locator('#save-status')).toHaveText('All changes saved');
+  await page.getByRole('button', { name: 'Delete' }).click();
+  const dt = await page.evaluateHandle(() => {
+    const d = new DataTransfer();
+    d.items.add(new File(['x'], 'sneaky.md', { type: 'text/markdown' }));
+    return d;
+  });
+  await page.dispatchEvent('body', 'dragover', { dataTransfer: dt });
+  await expect(page.locator('body')).not.toHaveClass(/dropping/);
+  await page.dispatchEvent('body', 'drop', { dataTransfer: dt });
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#title')).toHaveValue('Keep me');
+  await expect(page.locator('#owned')).not.toContainText('sneaky');
 });
 
 test('ux: on a phone the home screen has a compact top bar and opens the documents menu', async ({ page }) => {
@@ -359,18 +385,23 @@ test('ux: on a phone the home screen has a compact top bar and opens the documen
   await page.getByRole('button', { name: 'Your documents' }).click();
   await expect(page.locator('#sidebar')).toBeInViewport();
   await expect(page.locator('#new-doc')).toBeFocused();
+  await page.keyboard.press('Escape'); // closing the drawer hands focus back instead of dropping it on <body>
+  await expect(page.locator('#menu-btn')).toBeFocused();
 });
 
-test('ux: on touch screens every editor control is at least 44px to tap', async ({ browser }) => {
+test('ux: on touch screens every control is at least 44px; tablets in landscape keep button labels', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
   const page = await context.newPage();
   await signIn(page, 'Alice Owner');
-  await page.locator('#menu-btn').click();
-  await page.locator('#owned a').first().click();
+  await page.locator('#empty-new').click(); // own document, so this test doesn't depend on earlier ones
   await expect(page.locator('#editor .tiptap')).toBeVisible();
   const small = await page.$$eval('.toolbar button, .toolbar select, .doc-actions .btn, #menu-btn', (els) =>
     els.filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect()).filter((b) => b.width < 44 || b.height < 44).length);
   expect(small).toBe(0);
+
+  await page.setViewportSize({ width: 1366, height: 1024 });
+  const share = await page.getByRole('button', { name: 'Share' }).boundingBox();
+  expect(share.width).toBeGreaterThan(60); // label visible, not squeezed into a 44px square
   await context.close();
 });
 
