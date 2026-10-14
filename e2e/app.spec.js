@@ -23,7 +23,7 @@ const editor = (page) => page.locator('#editor .tiptap');
 
 test('owner creates, formats, saves and reopens a document', async ({ page }) => {
   await signIn(page, 'Alice Owner');
-  await page.getByRole('button', { name: '+ New document' }).click();
+  await page.getByRole('button', { name: 'New document' }).first().click();
   await page.locator('#title').fill('Launch plan');
   await page.locator('#title').press('Enter');
 
@@ -61,12 +61,19 @@ test('owner shares: editor can edit, viewer is read-only, stranger is denied', a
   await dialog.getByLabel('User').selectOption('bob@example.com');
   await dialog.getByLabel('Role').selectOption('editor');
   await dialog.getByRole('button', { name: 'Share' }).click();
-  await expect(page.locator('#share-list')).toContainText('Bob Editor can edit');
+  const accessFor = (name) => page.locator('#share-list li', { hasText: name }).locator('select');
+  await expect(accessFor('Bob Editor')).toHaveValue('editor');
   await dialog.getByLabel('User').selectOption('carol@example.com');
   await dialog.getByLabel('Role').selectOption('viewer');
   await dialog.getByRole('button', { name: 'Share' }).click();
-  await expect(page.locator('#share-list')).toContainText('Carol Reviewer can view');
-  await expect(page.locator('#share-list')).toContainText('Bob Editor can edit');
+  await expect(accessFor('Carol Reviewer')).toHaveValue('viewer');
+  await expect(accessFor('Bob Editor')).toHaveValue('editor');
+
+  // Changing a person's access in place works, and the change is real.
+  await accessFor('Carol Reviewer').selectOption('editor');
+  await expect(page.locator('#toast')).toContainText('Carol Reviewer can now edit');
+  await accessFor('Carol Reviewer').selectOption('viewer');
+  await expect(page.locator('#toast')).toContainText('Carol Reviewer can now view');
   await dialog.getByRole('button', { name: 'Done' }).click();
   const docUrl = page.url();
 
@@ -117,6 +124,22 @@ test('export downloads Markdown that matches the document', async ({ page }) => 
   expect(text).toContain('- Editor');
 });
 
+test('typing straight after "New document" never lands in the previous document', async ({ page }) => {
+  await signIn(page, 'Alice Owner');
+  await page.locator('#new-doc').click();
+  await page.locator('#title').fill('Race first');
+  await expect(page.locator('#save-status')).toHaveText('All changes saved');
+  // Real keystrokes fired the instant the button is clicked, while the new document is still loading.
+  await page.locator('#new-doc').click();
+  await page.keyboard.type('XYZ', { delay: 0 });
+  await expect(page.locator('#title')).toBeFocused();
+  await page.keyboard.type('Race second');
+  await expect(page.locator('#save-status')).toHaveText('All changes saved');
+  const titles = await page.locator('#owned .doc-name').allTextContents();
+  expect(titles).toContain('Race first'); // the previous document was never touched
+  expect(titles.some((t) => t.endsWith('Race second'))).toBe(true);
+});
+
 test('keyboard-only: sign in, create a doc and type without the mouse', async ({ page }) => {
   await page.goto('/'); // each Playwright test starts with fresh cookies, so this is the sign-in screen
   await expect(page.getByRole('button', { name: /Alice Owner/ })).toBeVisible(); // user list loads async
@@ -124,8 +147,9 @@ test('keyboard-only: sign in, create a doc and type without the mouse', async ({
   await expect(page.getByRole('button', { name: /Alice Owner/ })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('#me-name')).toHaveText('Alice Owner');
-  await page.getByRole('button', { name: '+ New document' }).focus();
+  await page.locator('#new-doc').focus();
   await page.keyboard.press('Enter');
+  await expect(page.locator('#title')).toBeFocused(); // the new document opens with its title selected
   await page.keyboard.type('Keyboard doc');
   await page.keyboard.press('Enter');
   await page.keyboard.type('Typed without a mouse');
@@ -135,7 +159,7 @@ test('keyboard-only: sign in, create a doc and type without the mouse', async ({
 test('expired session sends the user back to sign-in', async ({ page, context }) => {
   await signIn(page, 'Alice Owner');
   await context.clearCookies();
-  await page.getByRole('button', { name: '+ New document' }).click();
+  await page.locator('#new-doc').click();
   await expect(page.locator('#login')).toBeVisible();
   await expect(page.locator('#toast')).toContainText('session ended');
 });

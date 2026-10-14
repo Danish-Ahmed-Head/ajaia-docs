@@ -37,17 +37,37 @@ function sessionExpired() {
 function toast(msg) {
   const t = $('toast');
   t.textContent = msg; t.hidden = false;
-  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 3500);
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 4500);
 }
 const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const fmtDate = (s) => new Date(s).toLocaleString();
+
+const RELATIVE = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+function fmtRelative(s) {
+  const secs = Math.round((new Date(s).getTime() - Date.now()) / 1000);
+  const steps = [['year', 31536000], ['month', 2592000], ['day', 86400], ['hour', 3600], ['minute', 60]];
+  for (const [unit, size] of steps) if (Math.abs(secs) >= size) return RELATIVE.format(Math.round(secs / size), unit);
+  return 'just now';
+}
+
+const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+const hue = (name) => [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+const avatar = (name, cls = '') =>
+  `<span class="avatar ${cls}" style="--h:${hue(name)}" aria-hidden="true">${escapeHtml(initials(name))}</span>`;
+const icon = (id) => `<svg class="icon" aria-hidden="true"><use href="#i-${id}"/></svg>`;
 
 // ---------- auth ----------
+const DEMO_ROLE_HINT = {
+  'alice@example.com': 'Creates and shares documents',
+  'bob@example.com': 'Gets edit access in the demo',
+  'carol@example.com': 'Gets view-only access in the demo',
+};
 async function showLogin() {
-  $('app').hidden = true; $('login').hidden = false;
+  $('app').hidden = true; $('login').hidden = false; $('toast').hidden = true;
   const users = await api('/api/users');
   $('user-list').innerHTML = users.map((u) =>
-    `<button data-email="${escapeHtml(u.email)}">${escapeHtml(u.name)}<small>${escapeHtml(u.email)}</small></button>`).join('');
+    `<button class="user-btn" data-email="${escapeHtml(u.email)}">${avatar(u.name)}
+      <span><span class="who">${escapeHtml(u.name)}</span>
+      <span class="what">${escapeHtml(DEMO_ROLE_HINT[u.email] ?? u.email)}</span></span></button>`).join('');
 }
 $('user-list').addEventListener('click', async (e) => {
   const b = e.target.closest('button'); if (!b) return;
@@ -56,6 +76,18 @@ $('user-list').addEventListener('click', async (e) => {
     boot();
   } catch (err) { toast(err.message); }
 });
+
+// ---------- mobile drawer ----------
+function setNav(open) {
+  $('app').classList.toggle('nav-open', open);
+  $('menu-btn').setAttribute('aria-expanded', String(open));
+  $('scrim').hidden = !open;
+  if (open) $('new-doc').focus();
+}
+$('menu-btn').addEventListener('click', () => setNav(!$('app').classList.contains('nav-open')));
+$('nav-close').addEventListener('click', () => { setNav(false); $('menu-btn').focus(); });
+$('scrim').addEventListener('click', () => setNav(false));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setNav(false); });
 $('logout').addEventListener('click', async () => {
   if (!(await flushSave())) return;
   await api('/api/logout', { method: 'POST' });
@@ -63,26 +95,44 @@ $('logout').addEventListener('click', async () => {
 });
 
 // ---------- document list ----------
+const SKELETON = '<li aria-hidden="true"><div class="skeleton"></div></li>'.repeat(2);
+
 async function refreshList() {
   const { owned, shared } = await api('/api/docs');
   const active = state.doc?.id;
-  $('owned').innerHTML = owned.length ? owned.map((d) =>
-    `<li><a href="#/doc/${d.id}" class="${d.id === active ? 'active' : ''}">${escapeHtml(d.title)}
-      <small>Edited ${fmtDate(d.updated_at)}</small></a></li>`).join('')
-    : '<li class="empty-item">No documents yet</li>';
-  $('shared').innerHTML = shared.length ? shared.map((d) =>
-    `<li><a href="#/doc/${d.id}" class="${d.id === active ? 'active' : ''}">${escapeHtml(d.title)}
-      <span class="badge">${d.role === 'editor' ? 'can edit' : 'view only'}</span>
-      <small>Owner: ${escapeHtml(d.owner_name)}</small></a></li>`).join('')
-    : '<li class="empty-item">Nothing shared with you</li>';
+  const link = (d, sub) => `<li><a href="#/doc/${d.id}" class="${d.id === active ? 'active' : ''}"${d.id === active ? ' aria-current="page"' : ''}>
+      ${icon('file')}<span class="doc-name">${escapeHtml(d.title)}</span>${sub}</a></li>`;
+  $('owned').innerHTML = owned.length
+    ? owned.map((d) => link(d, `<span class="doc-sub"><span>Edited ${escapeHtml(fmtRelative(d.updated_at))}</span></span>`)).join('')
+    : '<li class="list-empty">No documents yet. Create one or import a file.</li>';
+  $('shared').innerHTML = shared.length
+    ? shared.map((d) => link(d, `<span class="doc-sub">${avatar(d.owner_name, 'avatar-sm')}<span>${escapeHtml(d.owner_name)}</span>
+        <span class="pill ${d.role === 'editor' ? 'pill-edit' : ''}">${d.role === 'editor' ? 'can edit' : 'view only'}</span></span>`)).join('')
+    : '<li class="list-empty">Nothing has been shared with you yet.</li>';
+
+  const hasDocs = owned.length + shared.length > 0;
+  $('empty-title').textContent = hasDocs ? 'Pick up where you left off' : 'Start a document';
+  $('empty-text').textContent = hasDocs
+    ? 'Choose a document from the sidebar, or start a new one.'
+    : 'Create a blank document, or import a .txt, .md or .docx file. You can share it with a teammate as an editor or viewer.';
 }
 
-$('new-doc').addEventListener('click', async () => {
-  const { id } = await api('/api/docs', { method: 'POST', body: { title: 'Untitled document' } });
-  location.hash = `#/doc/${id}`;
-  await refreshList();
-  setTimeout(() => $('title').select(), 50);
-});
+async function createDoc() {
+  setNav(false);
+  // Lock the current document while the new one loads, so early keystrokes can't land in the wrong title or body.
+  $('editor-view').inert = true;
+  try {
+    const { id } = await api('/api/docs', { method: 'POST', body: { title: 'Untitled document' } });
+    state.selectTitleOnOpen = true; // done by openDoc once the doc is mounted; a timer could steal focus later
+    location.hash = `#/doc/${id}`;
+    await refreshList();
+  } catch (err) {
+    $('editor-view').inert = false;
+    throw err;
+  }
+}
+$('new-doc').addEventListener('click', createDoc);
+$('empty-new').addEventListener('click', createDoc);
 
 $('upload').addEventListener('change', async (e) => {
   const file = e.target.files[0]; e.target.value = '';
@@ -92,7 +142,8 @@ $('upload').addEventListener('change', async (e) => {
   const form = new FormData(); form.append('file', file);
   try {
     const { id } = await api('/api/upload', { method: 'POST', form });
-    toast(`Imported "${file.name}"`);
+    toast(`Imported "${file.name}" as a new document`);
+    setNav(false);
     location.hash = `#/doc/${id}`; await refreshList();
   } catch (err) { toast(err.message); }
 });
@@ -118,34 +169,57 @@ function mountEditor(content, editable) {
 }
 
 async function openDoc(id) {
-  if (!(await flushSave())) { history.replaceState(null, '', `#/doc/${state.doc.id}`); return; }
+  $('editor-view').inert = true;
+  if (!(await flushSave())) {
+    $('editor-view').inert = false;
+    history.replaceState(null, '', `#/doc/${state.doc.id}`);
+    return;
+  }
   try {
     state.doc = await api(`/api/docs/${id}`);
   } catch (err) {
     state.doc = null; $('editor-view').hidden = true; $('empty').hidden = false;
+    $('editor-view').inert = false;
     toast(err.message); return refreshList();
   }
+  $('editor-view').inert = false;
   const d = state.doc, canEdit = d.role !== 'viewer';
+  setNav(false);
   $('empty').hidden = true; $('editor-view').hidden = false;
   $('title').value = d.title; $('title').readOnly = !canEdit;
   mountEditor(d.content || '', canEdit);
+  if (state.selectTitleOnOpen) { state.selectTitleOnOpen = false; $('title').select(); }
   $('readonly-banner').hidden = canEdit;
   $('toolbar').querySelectorAll('button, select').forEach((el) => (el.disabled = !canEdit));
   $('share-btn').hidden = d.role !== 'owner';
   $('delete-btn').hidden = d.role !== 'owner';
-  $('doc-meta').textContent = d.role === 'owner'
-    ? `You own this document${d.shares.length ? ` · shared with ${d.shares.length}` : ''}`
-    : `Owned by ${d.owner.name} · you ${d.role === 'editor' ? 'can edit' : 'can view'}`;
-  setStatus(`Saved ${fmtDate(d.updated_at)}`);
+  renderMeta();
+  setStatus(`Saved ${fmtRelative(d.updated_at)}`, 'saved');
+  updateWordCount();
+  document.title = `${d.title} · Ajaia Docs`;
   refreshList();
 }
 
-function setStatus(text, isError = false) {
-  const s = $('save-status'); s.textContent = text; s.classList.toggle('error', isError);
+function renderMeta() {
+  const d = state.doc;
+  $('doc-meta').textContent = d.role === 'owner'
+    ? (d.shares.length ? `You own this document · shared with ${d.shares.length} ${d.shares.length === 1 ? 'person' : 'people'}` : 'You own this document · private')
+    : `Owned by ${d.owner.name} · you can ${d.role === 'editor' ? 'edit' : 'view'}`;
+}
+
+function updateWordCount() {
+  const words = editor ? editor.getText().trim().split(/\s+/).filter(Boolean).length : 0;
+  $('word-count').textContent = `${words.toLocaleString()} ${words === 1 ? 'word' : 'words'}`;
+}
+
+/** state: 'saved' | 'saving' | 'dirty' | 'error'. Text of the "saved" state must stay "All changes saved" after a save. */
+function setStatus(text, kind = 'saved') {
+  const s = $('save-status');
+  s.textContent = text; s.dataset.state = kind; s.classList.toggle('error', kind === 'error');
 }
 
 function scheduleSave() {
-  state.dirty = true; setStatus('Unsaved changes…');
+  state.dirty = true; setStatus('Unsaved changes…', 'dirty'); updateWordCount();
   clearTimeout(state.saveTimer);
   state.saveTimer = setTimeout(save, 800);
 }
@@ -155,19 +229,19 @@ async function save({ keepalive = false } = {}) {
   await state.saving; // one save in flight at a time, so an older save can never land after a newer one
   if (!state.doc || !state.dirty || state.doc.role === 'viewer') return;
   const title = $('title').value.trim();
-  if (!title) { setStatus('Title cannot be empty', true); return; }
-  state.dirty = false; setStatus('Saving…');
+  if (!title) { setStatus('Add a title to save', 'error'); return; }
+  state.dirty = false; setStatus('Saving…', 'saving');
   const doc = state.doc;
   state.saving = api(`/api/docs/${doc.id}`, { method: 'PUT', body: { title, content: editor.getHTML() }, keepalive })
     .then((r) => {
       doc.title = title; doc.updated_at = r.updated_at;
-      if (state.doc === doc && !state.dirty) setStatus('All changes saved');
+      if (state.doc === doc && !state.dirty) { setStatus('All changes saved', 'saved'); document.title = `${title} · Ajaia Docs`; }
       refreshList();
     })
     .catch((err) => {
       if (state.doc !== doc) return;
       state.dirty = true;
-      setStatus(`Not saved: ${err.message}`, true);
+      setStatus(`Not saved: ${err.message}`, 'error');
       // Transient failures (offline, rate limit, server error) retry; validation errors wait for the user's next edit.
       if (err.status === 0 || err.status === 429 || err.status >= 500) state.saveTimer = setTimeout(save, 5000);
     });
@@ -179,7 +253,8 @@ async function flushSave() {
 }
 
 $('title').addEventListener('input', scheduleSave);
-$('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); editor?.commands.focus(); } });
+// view.focus() is synchronous; Tiptap's focus command waits a frame, which lets a fast next keystroke land in the title.
+$('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); editor?.view.focus(); } });
 // keepalive lets the final save finish while the tab closes (browser limit: 64 KB body).
 window.addEventListener('beforeunload', (e) => { if (state.dirty) { save({ keepalive: true }); e.preventDefault(); } });
 
@@ -211,12 +286,18 @@ function updateToolbar() {
 }
 
 // ---------- delete / export ----------
-$('delete-btn').addEventListener('click', async () => {
-  if (!confirm(`Delete "${state.doc.title}"? This cannot be undone.`)) return;
+$('delete-btn').addEventListener('click', () => {
+  const shared = state.doc.shares.length;
+  $('delete-text').textContent = `"${state.doc.title}" will be permanently deleted${shared ? ` for you and the ${shared} ${shared === 1 ? 'person' : 'people'} it is shared with` : ''}. This cannot be undone.`;
+  $('delete-dialog').showModal();
+});
+$('delete-dialog').addEventListener('close', async (e) => {
+  if (e.target.returnValue !== 'confirm') return;
   try {
     state.dirty = false; clearTimeout(state.saveTimer);
     await api(`/api/docs/${state.doc.id}`, { method: 'DELETE' });
-    state.doc = null; location.hash = '';
+    toast('Document deleted');
+    state.doc = null; location.hash = ''; document.title = 'Ajaia Docs';
     $('editor-view').hidden = true; $('empty').hidden = false; refreshList();
   } catch (err) { toast(err.message); }
 });
@@ -255,11 +336,26 @@ $('export-btn').addEventListener('click', () => {
 async function renderShareList() {
   const d = await api(`/api/docs/${state.doc.id}`);
   state.doc.shares = d.shares;
-  $('share-list').innerHTML = `<li><span>${escapeHtml(state.me.name)} <span class="badge">owner</span></span></li>` +
-    d.shares.map((s) => `<li><span>${escapeHtml(s.name)} <span class="badge">${s.role === 'editor' ? 'can edit' : 'can view'}</span></span>
-      <button type="button" class="link danger" data-remove="${s.id}">Remove</button></li>`).join('');
-  $('doc-meta').textContent = `You own this document${d.shares.length ? ` · shared with ${d.shares.length}` : ''}`;
+  const person = (name, email, trailing) => `<li>${avatar(name)}<span class="who"><b>${escapeHtml(name)}</b>
+    <small>${escapeHtml(email)}</small></span>${trailing}</li>`;
+  $('share-list').innerHTML = person(state.me.name, state.me.email, '<span class="pill">Owner</span>') +
+    d.shares.map((s) => person(s.name, s.email,
+      `<select data-user="${s.id}" aria-label="Access for ${escapeHtml(s.name)}">
+         <option value="editor"${s.role === 'editor' ? ' selected' : ''}>Can edit</option>
+         <option value="viewer"${s.role === 'viewer' ? ' selected' : ''}>Can view</option>
+       </select>
+       <button type="button" class="btn btn-ghost btn-icon btn-sm" data-remove="${s.id}" aria-label="Remove ${escapeHtml(s.name)}" title="Remove access">${icon('x')}</button>`)).join('');
+  renderMeta();
 }
+$('share-list').addEventListener('change', async (e) => {
+  const userId = e.target.dataset.user; if (!userId) return;
+  const person = state.doc.shares.find((s) => String(s.id) === userId);
+  try {
+    await api(`/api/docs/${state.doc.id}/share`, { method: 'POST', body: { email: person.email, role: e.target.value } });
+    await renderShareList();
+    toast(`${person.name} can now ${e.target.value === 'editor' ? 'edit' : 'view'} this document`);
+  } catch (err) { $('share-error').textContent = err.message; await renderShareList(); }
+});
 $('share-btn').addEventListener('click', async () => {
   $('share-error').textContent = '';
   // The user picker is filled once per open, so it never resets under the user while they pick.
@@ -275,11 +371,12 @@ $('share-add').addEventListener('click', async (e) => {
   try {
     await api(`/api/docs/${state.doc.id}/share`, { method: 'POST', body: { email: $('share-email').value, role: $('share-role').value } });
     await renderShareList();
+    toast(`Shared with ${$('share-email').selectedOptions[0].text.replace(/ \(.*/, '')}`);
   } catch (err) { $('share-error').textContent = err.message; }
   finally { e.target.disabled = false; }
 });
 $('share-list').addEventListener('click', async (e) => {
-  const id = e.target.dataset.remove; if (!id) return;
+  const id = e.target.closest('[data-remove]')?.dataset.remove; if (!id) return;
   try { await api(`/api/docs/${state.doc.id}/share/${id}`, { method: 'DELETE' }); await renderShareList(); }
   catch (err) { $('share-error').textContent = err.message; }
 });
@@ -294,8 +391,11 @@ window.addEventListener('hashchange', route);
 async function boot() {
   state.me = await api('/api/me');
   if (!state.me) return showLogin();
-  $('login').hidden = true; $('app').hidden = false;
+  $('login').hidden = true; $('app').hidden = false; $('toast').hidden = true;
+  $('owned').innerHTML = SKELETON; $('shared').innerHTML = SKELETON; // shown only until the first list arrives
   $('me-name').textContent = state.me.name;
+  $('me-avatar').innerHTML = '';
+  $('me-avatar').outerHTML = avatar(state.me.name).replace('class="avatar ', 'id="me-avatar" class="avatar ');
   await refreshList();
   route();
 }

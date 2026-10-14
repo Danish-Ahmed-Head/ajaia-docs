@@ -3,9 +3,9 @@
 ## One command
 ```bash
 npm run check      # ESLint + 21 API tests + production build
-npm run test:e2e   # 6 browser tests (Playwright, real Chrome, 3 users, in-memory DB)
+npm run test:e2e   # 7 browser tests (Playwright, real Chrome, 3 users, in-memory DB)
 ```
-Last run: 2026-10-14 11:40 PKT. `check` clean, 21/21 API tests, 6/6 E2E, three consecutive E2E runs with no flakes.
+Last run: 2026-10-14 11:40 PKT. `check` clean, 21/21 API tests, 7/7 E2E, three consecutive E2E runs with no flakes.
 
 ## What is covered
 
@@ -15,7 +15,7 @@ Last run: 2026-10-14 11:40 PKT. `check` clean, 21/21 API tests, 6/6 E2E, three c
 | API | `test/sharing.test.js` (4) | owner sees share list, others don't; re-share changes role; self/unknown/invalid role rejected; unshare revokes at once |
 | API | `test/security.test.js` (5) | forged/tampered/unsigned session cookies rejected; cookie flags; CSP and security headers; non-JSON bodies refused (415); login rate limit (429) |
 | API | `test/convert.test.js` (5) | .txt escaping, Markdown subset, real generated .docx, unsupported types (415), corrupt .docx (422) |
-| E2E | `e2e/app.spec.js` (6) | full owner flow with reload; share → editor edits → viewer read-only; direct API write as viewer = 403; Markdown import; export; keyboard-only; expired session. Every test also fails on any console error |
+| E2E | `e2e/app.spec.js` (7) | full owner flow with reload; share → editor edits → viewer read-only; direct API write as viewer = 403; Markdown import; export; keyboard-only; no keystroke lands in the previous doc while a new one loads; expired session. Every test also fails on any console error |
 
 ## Mutation check (do the tests actually catch bugs?)
 Four deliberate bugs were injected into the server one at a time; the suite failed each time, then was restored:

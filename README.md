@@ -32,7 +32,7 @@ Requires **Node.js 22.12 or newer**. No database setup is needed: without `DATAB
 npm install
 npm run dev        # builds the frontend, then serves http://localhost:3000
 npm run check      # lint + 21 API tests + production build
-npm run test:e2e   # 6 browser tests (Playwright, uses installed Google Chrome)
+npm run test:e2e   # 7 browser tests (Playwright, uses installed Google Chrome)
 ```
 
 | Env var | Default | Purpose |
