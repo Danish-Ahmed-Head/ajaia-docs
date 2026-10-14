@@ -18,8 +18,14 @@ const SANITIZE = {
   allowedTags: ['p', 'br', 'h1', 'h2', 'h3', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'blockquote', 'a', 'code', 'pre', 'hr'],
   allowedAttributes: { a: ['href', 'target', 'rel'] },
   allowedSchemes: ['http', 'https', 'mailto'],
+  // Force rel on every link: a stored rel="opener" + target="_blank" would let the linked page redirect our tab (reverse tabnabbing).
+  transformTags: { a: (tagName, attribs) => ({ tagName, attribs: { ...attribs, rel: 'noopener noreferrer nofollow' } }) },
 };
 const clean = (html) => sanitizeHtml(html, SANITIZE);
+const MAX_VERSIONS_PER_DOC = 100;
+
+/** Positive int4 from a URL segment, else null. Out-of-range values would make Postgres throw (a 500). */
+const toId = (raw) => (/^[1-9]\d{0,9}$/.test(String(raw)) && Number(raw) <= 2_147_483_647 ? Number(raw) : null);
 
 export class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -38,7 +44,7 @@ export function createApp(db, { sessionSecret, production = false }) {
   const session = sessions(sessionSecret, { secure: production });
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD, files: 1 } });
 
-  if (production) app.set('trust proxy', 1); // behind Render's proxy: real client IP for rate limits, HTTPS for Secure cookies
+  if (production) app.set('trust proxy', 1); // behind one hosting proxy (Vercel/Render): real client IP for rate limits, HTTPS for Secure cookies
   app.disable('x-powered-by');
   app.use(helmet({
     contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null } },
@@ -51,7 +57,7 @@ export function createApp(db, { sessionSecret, production = false }) {
     const hasBody = Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding'] !== undefined;
     next(hasBody && !req.is(['application/json', 'multipart/form-data']) ? new HttpError(415, 'Unsupported content type') : undefined);
   });
-  app.use('/api', limiter(60_000, 300)); // general ceiling per IP
+  app.use('/api', limiter(60_000, 600)); // general ceiling per IP (an office behind one NAT counts as one IP)
 
   // --- mocked auth (allowed by the brief): pick a seeded user; signed, httpOnly session cookie ---
   app.use('/api', async (req, _res, next) => {
@@ -82,8 +88,8 @@ export function createApp(db, { sessionSecret, production = false }) {
 
   /** Resolve the caller's effective role ('owner' | 'editor' | 'viewer') or throw 404/403. Single access gate. */
   async function loadDoc(rawId, user) {
-    const id = Number.parseInt(rawId, 10);
-    if (!Number.isInteger(id) || String(id) !== String(rawId)) throw new HttpError(404, 'Document not found');
+    const id = toId(rawId);
+    if (!id) throw new HttpError(404, 'Document not found');
     const doc = await db.one(`
       SELECT d.*, u.name AS owner_name, u.email AS owner_email, s.role AS share_role
       FROM documents d
@@ -140,27 +146,34 @@ export function createApp(db, { sessionSecret, production = false }) {
     }
     const newTitle = title !== undefined ? title.trim() : doc.title;
     const newContent = content !== undefined ? clean(content) : doc.content;
-    const row = await db.one(
-      'UPDATE documents SET title = $1, content = $2, updated_at = now() WHERE id = $3 RETURNING updated_at',
-      [newTitle, newContent, doc.id]);
-    await recordVersion(doc.id, req.user.id, newTitle, newContent);
+    // One transaction: the document and its history can never disagree, even if the second statement fails.
+    const row = await db.tx(async (t) => {
+      const updated = await t.one(
+        'UPDATE documents SET title = $1, content = $2, updated_at = now() WHERE id = $3 RETURNING updated_at',
+        [newTitle, newContent, doc.id]);
+      await recordVersion(t, doc.id, req.user.id, newTitle, newContent);
+      return updated;
+    });
     res.json({ ok: true, updated_at: row.updated_at });
   });
 
   // --- version history ---
   // Autosave runs every few seconds, so one person's continuous editing is folded into a single version
   // per 10-minute session. A different author, a restore or an import always starts a new version.
-  async function recordVersion(docId, authorId, title, content, note = null) {
+  // History is capped per document so two people taking turns can't grow it without bound.
+  async function recordVersion(t, docId, authorId, title, content, note = null) {
     if (!note) {
-      const merged = await db.one(`
+      const merged = await t.one(`
         UPDATE document_versions SET title = $3, content = $4, saved_at = now()
         WHERE id = (SELECT id FROM document_versions WHERE doc_id = $1 ORDER BY id DESC LIMIT 1)
           AND author_id = $2 AND note IS NULL AND started_at > now() - interval '10 minutes'
         RETURNING id`, [docId, authorId, title, content]);
       if (merged) return;
     }
-    await db.query('INSERT INTO document_versions (doc_id, title, content, author_id, note) VALUES ($1, $2, $3, $4, $5)',
+    await t.query('INSERT INTO document_versions (doc_id, title, content, author_id, note) VALUES ($1, $2, $3, $4, $5)',
       [docId, title, content, authorId, note]);
+    await t.query(`DELETE FROM document_versions WHERE doc_id = $1 AND id NOT IN (
+                     SELECT id FROM document_versions WHERE doc_id = $1 ORDER BY id DESC LIMIT ${MAX_VERSIONS_PER_DOC})`, [docId]);
   }
 
   app.get('/api/docs/:id/versions', requireUser, async (req, res) => {
@@ -172,8 +185,8 @@ export function createApp(db, { sessionSecret, production = false }) {
   });
 
   const loadVersion = async (doc, rawVid) => {
-    const vid = Number.parseInt(rawVid, 10);
-    const v = Number.isInteger(vid) ? await db.one(`
+    const vid = toId(rawVid);
+    const v = vid ? await db.one(`
       SELECT v.id, v.title, v.content, v.note, v.saved_at, u.name AS author_name
       FROM document_versions v JOIN users u ON u.id = v.author_id WHERE v.id = $1 AND v.doc_id = $2`, [vid, doc.id]) : null;
     if (!v) throw new HttpError(404, 'Version not found');
@@ -189,9 +202,12 @@ export function createApp(db, { sessionSecret, production = false }) {
     const { doc, role } = await loadDoc(req.params.id, req.user);
     if (role === 'viewer') throw new HttpError(403, 'View-only access: you cannot restore versions');
     const v = await loadVersion(doc, req.params.vid);
-    const row = await db.one('UPDATE documents SET title = $1, content = $2, updated_at = now() WHERE id = $3 RETURNING updated_at',
-      [v.title, v.content, doc.id]);
-    await recordVersion(doc.id, req.user.id, v.title, v.content, `Restored the version from ${new Date(v.saved_at).toISOString()}`);
+    const row = await db.tx(async (t) => {
+      const updated = await t.one('UPDATE documents SET title = $1, content = $2, updated_at = now() WHERE id = $3 RETURNING updated_at',
+        [v.title, v.content, doc.id]);
+      await recordVersion(t, doc.id, req.user.id, v.title, v.content, `Restored the version from ${new Date(v.saved_at).toISOString()}`);
+      return updated;
+    });
     res.json({ ok: true, updated_at: row.updated_at });
   });
 
@@ -245,19 +261,29 @@ export function createApp(db, { sessionSecret, production = false }) {
   app.delete('/api/docs/:id/share/:userId', requireUser, async (req, res) => {
     const { doc, role } = await loadDoc(req.params.id, req.user);
     if (role !== 'owner') throw new HttpError(403, 'Only the owner can change sharing');
-    await db.query('DELETE FROM shares WHERE doc_id = $1 AND user_id = $2', [doc.id, Number.parseInt(req.params.userId, 10)]);
+    const userId = toId(req.params.userId);
+    if (!userId) throw new HttpError(404, 'User not found');
+    await db.query('DELETE FROM shares WHERE doc_id = $1 AND user_id = $2', [doc.id, userId]);
     res.json({ ok: true });
   });
 
   // --- file upload -> new editable document ---
-  app.post('/api/upload', requireUser, limiter(10 * 60_000, 30), upload.single('file'), async (req, res) => {
+  // Busboy errors (truncated/malformed multipart) arrive without a status; they are the client's fault, so 400 not 500.
+  const receiveFile = (req, res, next) => upload.single('file')(req, res, (err) =>
+    next(err && !(err instanceof multer.MulterError) && !err.status ? new HttpError(400, 'Malformed upload') : err));
+
+  app.post('/api/upload', requireUser, limiter(10 * 60_000, 30), receiveFile, async (req, res) => {
     if (!req.file) throw new HttpError(400, 'No file provided (form field name: "file")');
     // multer decodes multipart filenames as latin1; restore UTF-8 names.
     const name = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
     const html = clean(await fileToHtml(name, req.file.buffer));
     const title = name.replace(/\.[^.]+$/, '').trim().slice(0, MAX_TITLE) || 'Imported document';
-    const id = await createDoc(req.user, title, html);
-    await recordVersion(id, req.user.id, title, html, `Imported from ${name}`);
+    const id = await db.tx(async (t) => {
+      const created = (await t.one('INSERT INTO documents (title, content, owner_id) VALUES ($1, $2, $3) RETURNING id',
+        [title, html, req.user.id])).id;
+      await recordVersion(t, created, req.user.id, title, html, `Imported from ${name}`);
+      return created;
+    });
     res.status(201).json({ id });
   });
   app.get('/api/upload/supported', (_req, res) => res.json({ extensions: SUPPORTED, maxBytes: MAX_UPLOAD }));

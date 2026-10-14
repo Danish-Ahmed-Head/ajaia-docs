@@ -8,7 +8,11 @@ const SEED_USERS = [
   ['Carol Reviewer', 'carol@example.com'],
 ];
 
+// Sent as ONE multi-statement request (one round trip on cold start). The transaction-scoped advisory lock
+// stops two instances that cold-start at the same moment from racing on CREATE TABLE IF NOT EXISTS.
 const SCHEMA = `
+  BEGIN;
+  SELECT pg_advisory_xact_lock(724001);
   CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -41,33 +45,64 @@ const SCHEMA = `
     saved_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS versions_doc_idx ON document_versions(doc_id, id DESC);
+  COMMIT;
 `;
+const SEED_SQL = `INSERT INTO users (name, email) VALUES ${SEED_USERS.map((_, i) => `($${2 * i + 1}, $${2 * i + 2})`).join(', ')}
+                  ON CONFLICT (email) DO NOTHING`;
+
+/** query/one/all over any "run one statement" function, so pool, PGlite and transactions share one shape. */
+const helpers = (query) => ({
+  query,
+  one: async (text, params) => (await query(text, params)).rows[0] ?? null,
+  all: async (text, params) => (await query(text, params)).rows,
+});
 
 /**
  * One tiny interface over two drivers, both real Postgres SQL:
  *  - DATABASE_URL set  -> node-postgres pool (production: Neon)
  *  - otherwise         -> PGlite (in-memory for tests, or a local data dir for dev)
- * Both expose query(text, params) -> { rows }.
+ * Exposes query/one/all, tx(fn) for atomic multi-statement work, close() and kind.
  */
 export async function createDb({ url, dataDir } = {}) {
-  let query, close;
+  let exec, query, tx, close;
   if (url) {
-    const pool = new pg.Pool({ connectionString: url, max: 5 });
+    // idleTimeoutMillis < Neon's 5-minute auto-suspend, so we close idle sockets before Neon kills them.
+    const pool = new pg.Pool({ connectionString: url, max: 5, idleTimeoutMillis: 10_000 });
+    // Without a listener, an idle client dropped by the server (Neon suspend) emits an unhandled 'error' and kills the process.
+    pool.on('error', (err) => console.error('Postgres idle client error (pool will reconnect):', err.message));
+    exec = (sql) => pool.query(sql); // no params = simple protocol, which allows several statements in one round trip
     query = (text, params) => pool.query(text, params);
+    tx = async (fn) => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await fn(helpers((text, params) => client.query(text, params)));
+        await client.query('COMMIT');
+        return result;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    };
     close = () => pool.end();
   } else {
     // Loaded only when needed, so production (Postgres) never pays for PGlite's WASM at cold start.
     const { PGlite } = await import('@electric-sql/pglite');
     if (dataDir) fs.mkdirSync(path.dirname(dataDir), { recursive: true }); // PGlite only creates the leaf dir
     const lite = dataDir ? new PGlite(dataDir) : new PGlite();
+    exec = (sql) => lite.exec(sql);
     query = (text, params) => lite.query(text, params);
+    tx = (fn) => lite.transaction((t) => fn(helpers((text, params) => t.query(text, params))));
     close = () => lite.close();
   }
-  for (const stmt of SCHEMA.split(';').map((s) => s.trim()).filter(Boolean)) await query(stmt);
-  for (const [name, email] of SEED_USERS) {
-    await query('INSERT INTO users (name, email) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING', [name, email]);
+  try {
+    await exec(SCHEMA);
+    await query(SEED_SQL, SEED_USERS.flat());
+  } catch (err) {
+    await close().catch(() => {}); // don't leak a pool when start-up fails; the caller retries with a new one
+    throw err;
   }
-  const one = async (text, params) => (await query(text, params)).rows[0] ?? null;
-  const all = async (text, params) => (await query(text, params)).rows;
-  return { query, one, all, close, kind: url ? 'postgres' : 'pglite' };
+  return { ...helpers(query), tx, close, kind: url ? 'postgres' : 'pglite' };
 }

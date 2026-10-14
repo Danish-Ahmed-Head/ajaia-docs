@@ -97,8 +97,8 @@ npm run dev          # builds the frontend, then serves http://localhost:3000
 | `npm run dev` | Build the frontend and start the server |
 | `npm start` | Start the server (expects a built `dist/`) |
 | `npm run build` | Build the frontend with Vite into `dist/` |
-| `npm test` | 30 API tests against in-memory Postgres |
-| `npm run test:e2e` | 10 browser tests (Playwright, uses your installed Google Chrome) |
+| `npm test` | 38 API tests against in-memory Postgres |
+| `npm run test:e2e` | 14 browser tests (Playwright, uses your installed Google Chrome) |
 | `npm run lint` | ESLint |
 | `npm run check` | Lint + API tests + build: the gate run before every commit |
 
@@ -111,8 +111,8 @@ No Google Chrome? Run `npx playwright install chromium`, then `PW_CHANNEL=chromi
 ## Tests
 
 ```bash
-npm run check       # ESLint + 30 API tests + production build
-npm run test:e2e    # 10 end-to-end tests in real Chrome
+npm run check       # ESLint + 38 API tests + production build
+npm run test:e2e    # 14 end-to-end tests in real Chrome
 ```
 
 | Suite | Tests | Covers |
@@ -122,8 +122,9 @@ npm run test:e2e    # 10 end-to-end tests in real Chrome
 | `test/security.test.js` | 5 | Forged and tampered session cookies; cookie flags; CSP and security headers; non-JSON writes refused; login rate limit |
 | `test/convert.test.js` | 5 | `.txt` escaping, Markdown subset, a real generated `.docx`, unsupported and corrupt files |
 | `test/versions.test.js` | 5 | Version grouping per author and session; restore; viewer and stranger access; cross-document version IDs refused; presence |
+| `test/review-fixes.test.js` | 8 | Regression tests for the independent code review: id ranges, link rel, malformed uploads, zip bombs, history cap, production config, start-up failure, restart idempotency |
 | `test/vercel.test.js` | 4 | The exact bundle Vercel deploys: serves the API, loads with no `node_modules`, fails cleanly without secrets, correct routes and headers |
-| `e2e/app.spec.js` | 10 | Owner flow with reload, three-user sharing, import, export (Markdown and PDF), version restore, two-browser presence, keyboard-only use, focus races, expired session |
+| `e2e/app.spec.js` | 14 | Owner flow with reload, three-user sharing, import, export (Markdown and PDF), version restore, two-browser presence, keyboard-only use, focus races, expired session |
 
 Every single-browser end-to-end test also **fails on any browser console error**. As a check that the tests can actually catch bugs, four deliberate security bugs were injected into the server one at a time (viewers allowed to edit, non-owners allowed to share, sanitising removed, session signature check removed). The suite failed every time. Details: [`docs/TESTING.md`](docs/TESTING.md).
 

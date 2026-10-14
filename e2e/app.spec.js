@@ -29,6 +29,8 @@ test('owner creates, formats, saves and reopens a document', async ({ page }) =>
 
   await page.keyboard.type('Goals');
   await page.getByLabel('Text style').selectOption('h1');
+  await page.getByLabel('Text style').press('Enter'); // keyboard users confirm with Enter to return to the text
+  await expect(page.locator('#editor .tiptap')).toBeFocused();
   await page.keyboard.press('End');
   await page.keyboard.press('Enter');
   await page.getByLabel('Bold').click();
@@ -239,6 +241,91 @@ test('export PDF prints only the document', async ({ page }) => {
   await expect(page.locator('#editor h1')).toHaveText('Goals');
   const printedTitle = await page.locator('.sheet-wrap').evaluate((el) => getComputedStyle(el, '::before').content);
   expect(printedTitle).toBe('"Launch plan"');
+});
+
+test('review fix: pressing Escape in the delete dialog never deletes (even after a previous delete)', async ({ page }) => {
+  await signIn(page, 'Alice Owner');
+  for (const title of ['Delete me', 'Keep me']) {
+    await page.locator('#new-doc').click();
+    await expect(page.locator('#title')).toBeFocused();
+    await page.keyboard.type(title);
+    await expect(page.locator('#save-status')).toHaveText('All changes saved');
+  }
+  await page.locator('#owned a', { hasText: 'Delete me' }).click();
+  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('button', { name: 'Delete document' }).click(); // first: a real delete
+  await expect(page.locator('#owned')).not.toContainText('Delete me');
+
+  await page.locator('#owned a', { hasText: 'Keep me' }).click();
+  await page.getByRole('button', { name: 'Delete' }).click();
+  await expect(page.locator('#delete-dialog')).toBeVisible();
+  await page.keyboard.press('Escape'); // second: cancel
+  await expect(page.locator('#delete-dialog')).toBeHidden();
+  await page.reload();
+  await expect(page.locator('#owned')).toContainText('Keep me');
+});
+
+test('review fix: switching user without a reload shows nothing of the previous user\'s document', async ({ page }) => {
+  await signIn(page, 'Alice Owner');
+  await page.locator('#new-doc').click();
+  await expect(page.locator('#title')).toBeFocused();
+  await page.keyboard.type('Alice private draft');
+  await expect(page.locator('#save-status')).toHaveText('All changes saved');
+  await page.getByRole('button', { name: 'Switch user' }).click(); // no page.goto: same page, like a real user
+  await page.getByRole('button', { name: /Carol Reviewer/ }).click();
+  await expect(page.locator('#me-name')).toHaveText('Carol Reviewer');
+  await expect(page.locator('#editor-view')).toBeHidden();
+  await expect(page.locator('#empty')).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('Alice private draft');
+});
+
+test('review fix: an editor whose access is downgraded mid-session is switched to read-only', async ({ browser }) => {
+  const alice = await (await browser.newContext()).newPage();
+  const bob = await (await browser.newContext()).newPage();
+  await signIn(alice, 'Alice Owner');
+  await alice.locator('#new-doc').click();
+  await expect(alice.locator('#title')).toBeFocused();
+  await alice.keyboard.type('Downgrade test');
+  await expect(alice.locator('#save-status')).toHaveText('All changes saved');
+  const docId = new URL(alice.url()).hash.split('/').pop();
+  const share = (role) => alice.evaluate(async ([id, r]) => (await fetch(`/api/docs/${id}/share`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'bob@example.com', role: r }),
+  })).status, [docId, role]);
+  expect(await share('editor')).toBe(200);
+
+  await signIn(bob, 'Bob Editor');
+  await bob.goto(`/#/doc/${docId}`);
+  await expect(bob.locator('#editor .tiptap')).toHaveAttribute('contenteditable', 'true');
+  expect(await share('viewer')).toBe(200); // owner downgrades Bob while he has it open
+  await bob.locator('#editor .tiptap').click();
+  await bob.keyboard.type(' more');
+  await expect(bob.locator('#readonly-banner')).toBeVisible(); // his save got 403, so the app reloaded his role
+  await expect(bob.locator('#editor .tiptap')).toHaveAttribute('contenteditable', 'false');
+  await alice.context().close(); await bob.context().close();
+});
+
+test('review fix: Markdown export keeps nested lists and puts marks around the words', async ({ page }) => {
+  await signIn(page, 'Alice Owner');
+  await page.locator('#new-doc').click();
+  await expect(page.locator('#title')).toBeFocused();
+  await page.keyboard.type('Export check');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('- parent');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab'); // nest
+  await page.keyboard.type('child');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('Ship ');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('it');
+  await expect(page.locator('#save-status')).toHaveText('All changes saved');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export .md' }).click()]);
+  const md = await (await download.createReadStream()).toArray().then((c) => Buffer.concat(c).toString());
+  expect(md).toContain('- parent\n  - child');
+  expect(md).toContain('**Ship** it');
 });
 
 test('expired session sends the user back to sign-in', async ({ page, context }) => {

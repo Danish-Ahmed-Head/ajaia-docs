@@ -2,7 +2,7 @@ import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 
 const $ = (id) => document.getElementById(id);
-const state = { me: null, doc: null, saveTimer: null, dirty: false, saving: null };
+const state = { me: null, doc: null, saveTimer: null, dirty: false, saving: null, openSeq: 0 };
 
 async function api(path, { method = 'GET', body, form, keepalive = false } = {}) {
   let res;
@@ -30,9 +30,19 @@ window.addEventListener('unhandledrejection', (e) => {
 function sessionExpired() {
   if (!$('login').hidden) return;
   clearInterval(state.presenceTimer); $('presence').innerHTML = ''; // no DELETE call: the session is already gone
-  state.doc = null; state.dirty = false; clearTimeout(state.saveTimer);
+  closeDocView();
   toast('Your session ended. Please sign in again.');
   showLogin();
+}
+
+/** Tear down the open document completely, so nothing of it survives into the next session or user. */
+function closeDocView() {
+  state.openSeq++; // any openDoc still in flight is now stale
+  state.doc = null; state.dirty = false; clearTimeout(state.saveTimer);
+  editor?.destroy(); editor = null;
+  $('editor-view').hidden = true; $('empty').hidden = false; $('remote-banner').hidden = true;
+  document.title = 'Ajaia Docs';
+  if (location.hash) history.replaceState(null, '', location.pathname);
 }
 
 function toast(msg) {
@@ -79,27 +89,33 @@ $('user-list').addEventListener('click', async (e) => {
 });
 
 // ---------- mobile drawer ----------
+const mobileNav = window.matchMedia('(max-width: 760px)');
 function setNav(open) {
   $('app').classList.toggle('nav-open', open);
   $('menu-btn').setAttribute('aria-expanded', String(open));
   $('scrim').hidden = !open;
+  // A closed drawer is only moved off-screen; inert keeps its links out of the Tab order and screen readers.
+  $('sidebar').inert = mobileNav.matches && !open;
   if (open) $('new-doc').focus();
 }
+mobileNav.addEventListener('change', () => setNav(false));
 $('menu-btn').addEventListener('click', () => setNav(!$('app').classList.contains('nav-open')));
 $('nav-close').addEventListener('click', () => { setNav(false); $('menu-btn').focus(); });
 $('scrim').addEventListener('click', () => setNav(false));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setNav(false); });
 $('logout').addEventListener('click', async () => {
   if (!(await flushSave())) return;
+  stopPresence(); // before logout: the "left the document" call still needs the session
   await api('/api/logout', { method: 'POST' });
-  stopPresence();
-  state.doc = null; location.hash = ''; showLogin();
+  closeDocView();
+  showLogin();
 });
 
 // ---------- document list ----------
 const SKELETON = '<li aria-hidden="true"><div class="skeleton"></div></li>'.repeat(2);
 
 async function refreshList() {
+  state.listAt = Date.now();
   const { owned, shared } = await api('/api/docs');
   const active = state.doc?.id;
   const link = (d, sub) => `<li><a href="#/doc/${d.id}" class="${d.id === active ? 'active' : ''}"${d.id === active ? ' aria-current="page"' : ''}>
@@ -171,20 +187,26 @@ function mountEditor(content, editable) {
 }
 
 async function openDoc(id) {
+  const seq = ++state.openSeq; // if another document is opened before this one loads, this call stands down
   $('editor-view').inert = true;
-  stopPresence();
   if (!(await flushSave())) {
     $('editor-view').inert = false;
-    history.replaceState(null, '', `#/doc/${state.doc.id}`);
+    history.replaceState(null, '', `#/doc/${state.doc.id}`); // user chose to stay; presence keeps running
     return;
   }
+  if (seq !== state.openSeq) return;
+  stopPresence();
+  state.dirty = false; clearTimeout(state.saveTimer); // the user agreed to leave: nothing carries over
+  let doc;
   try {
-    state.doc = await api(`/api/docs/${id}`);
+    doc = await api(`/api/docs/${id}`);
   } catch (err) {
-    state.doc = null; $('editor-view').hidden = true; $('empty').hidden = false;
-    $('editor-view').inert = false;
+    if (seq !== state.openSeq) return;
+    closeDocView();
     toast(err.message); return refreshList();
   }
+  if (seq !== state.openSeq) return; // a newer openDoc won the race
+  state.doc = doc;
   $('editor-view').inert = false;
   const d = state.doc, canEdit = d.role !== 'viewer';
   setNav(false);
@@ -214,11 +236,17 @@ function startPresence() {
   const tick = async () => {
     if (state.doc !== doc || document.hidden) return;
     let p;
-    try { p = await api(`/api/docs/${doc.id}/presence`, { method: 'POST' }); } catch { return; }
+    try {
+      p = await api(`/api/docs/${doc.id}/presence`, { method: 'POST' });
+    } catch (err) {
+      if (state.doc === doc) accessMayHaveChanged(err);
+      return;
+    }
     if (state.doc !== doc) return;
     renderPresence(p.others);
     const theirs = new Date(p.updated_at).getTime(), ours = new Date(doc.updated_at).getTime();
     if (theirs > ours && !state.dirty && !state.inFlight) {
+      if ($('remote-banner').hidden) state.warnedOverwrite = false; // a new remote change: warn again on the next edit
       $('remote-text').textContent = `${p.last_editor ?? 'Someone'} updated this document.`;
       $('remote-banner').hidden = false;
     }
@@ -239,6 +267,15 @@ function renderPresence(others) {
 }
 $('remote-reload').addEventListener('click', () => openDoc(state.doc.id));
 
+/** 403/404 on an open document means the owner changed or removed our access: reload it to pick up the new role. */
+function accessMayHaveChanged(err) {
+  if (err.status !== 403 && err.status !== 404) return false;
+  state.dirty = false; clearTimeout(state.saveTimer); // unsaveable under the new role; avoids a "leave anyway?" loop
+  toast('Your access to this document changed.');
+  openDoc(state.doc.id);
+  return true;
+}
+
 // ---------- version history ----------
 let historyVersions = [], historySelected = null;
 async function selectVersion(index) {
@@ -246,6 +283,7 @@ async function selectVersion(index) {
   historySelected = v;
   for (const b of $('history-list').querySelectorAll('button')) b.setAttribute('aria-current', String(Number(b.dataset.i) === index));
   const full = await api(`/api/docs/${state.doc.id}/versions/${v.id}`);
+  if (historySelected !== v) return; // a later click won; never preview one version while Restore targets another
   $('history-preview').innerHTML = full.content || '<p class="muted">This version is empty.</p>'; // content is sanitised on the server
   $('history-meta').textContent = index === 0 ? 'This is the current version.' : `${v.author_name} · ${new Date(v.saved_at).toLocaleString()}`;
   $('history-restore').hidden = state.doc.role === 'viewer';
@@ -300,6 +338,10 @@ function setStatus(text, kind = 'saved') {
 }
 
 function scheduleSave() {
+  if (!$('remote-banner').hidden && !state.warnedOverwrite) {
+    state.warnedOverwrite = true;
+    toast('Someone else changed this document. Saving will replace their version (it stays in History). Use “Load latest” to see it first.');
+  }
   state.dirty = true; setStatus('Unsaved changes…', 'dirty'); updateWordCount();
   clearTimeout(state.saveTimer);
   state.saveTimer = setTimeout(save, 800);
@@ -316,16 +358,19 @@ async function save({ keepalive = false } = {}) {
   state.inFlight = true; // tells the presence check that a newer server timestamp is our own save
   state.saving = api(`/api/docs/${doc.id}`, { method: 'PUT', body: { title, content: editor.getHTML() }, keepalive })
     .then((r) => {
+      const titleChanged = doc.title !== title;
       doc.title = title; doc.updated_at = r.updated_at;
       if (state.doc === doc && !state.dirty) {
         setStatus('All changes saved', 'saved');
         document.title = `${title} · Ajaia Docs`;
         document.querySelector('.sheet-wrap').dataset.title = title;
       }
-      refreshList();
+      // Autosave runs about once a second while typing; re-fetching the list each time doubled API traffic.
+      if (titleChanged || Date.now() - state.listAt > 30_000) refreshList();
     })
     .catch((err) => {
       if (state.doc !== doc) return;
+      if (accessMayHaveChanged(err)) return;
       state.dirty = true;
       setStatus(`Not saved: ${err.message}`, 'error');
       // Transient failures (offline, rate limit, server error) retry; validation errors wait for the user's next edit.
@@ -356,10 +401,19 @@ $('toolbar').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-cmd]');
   if (b && editor) COMMANDS[b.dataset.cmd](editor.chain().focus()).run();
 });
+// Keyboard users step through options with the arrow keys (each fires "change"), so focus only returns to the
+// document after a mouse/touch pick or when they press Enter/Escape.
+let blockStyleByPointer = false;
+$('block-style').addEventListener('pointerdown', () => { blockStyleByPointer = true; });
+$('block-style').addEventListener('keydown', (e) => {
+  blockStyleByPointer = false;
+  if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); editor?.view.focus(); }
+});
 $('block-style').addEventListener('change', (e) => {
   const level = Number(e.target.value.slice(1));
-  const chain = editor.chain().focus();
+  const chain = editor.chain();
   (e.target.value === 'p' ? chain.setParagraph() : chain.setHeading({ level })).run();
+  if (blockStyleByPointer) editor.view.focus();
 });
 function updateToolbar() {
   if (!editor) return;
@@ -376,19 +430,32 @@ function updateToolbar() {
 $('delete-btn').addEventListener('click', () => {
   const shared = state.doc.shares.length;
   $('delete-text').textContent = `"${state.doc.title}" will be permanently deleted${shared ? ` for you and the ${shared} ${shared === 1 ? 'person' : 'people'} it is shared with` : ''}. This cannot be undone.`;
+  // <dialog> keeps its last returnValue, and Escape doesn't change it: reset it so only a click on Delete counts.
+  $('delete-dialog').returnValue = '';
   $('delete-dialog').showModal();
 });
 $('delete-dialog').addEventListener('close', async (e) => {
   if (e.target.returnValue !== 'confirm') return;
   try {
-    state.dirty = false; clearTimeout(state.saveTimer);
     stopPresence();
     await api(`/api/docs/${state.doc.id}`, { method: 'DELETE' });
+    closeDocView(); // only after the server confirmed: a failed delete keeps the document and its unsaved edits
     toast('Document deleted');
-    state.doc = null; location.hash = ''; document.title = 'Ajaia Docs';
-    $('editor-view').hidden = true; $('empty').hidden = false; refreshList();
-  } catch (err) { toast(err.message); }
+    refreshList();
+  } catch (err) {
+    startPresence();
+    toast(err.message);
+  }
 });
+
+// Markdown needs delimiters hugging the text: "**Ship **it" doesn't render, "**Ship** it" does.
+const wrapMark = (inner, mark) => {
+  const [, lead, core, trail] = /^(\s*)([\s\S]*?)(\s*)$/.exec(inner);
+  return core ? `${lead}${mark}${core}${mark}${trail}` : inner;
+};
+// List items: their blocks become lines, and continuation lines are indented under the marker
+// so nested lists and second paragraphs stay inside the item.
+const listItem = (marker, body) => marker + body.trim().replace(/\n{2,}/g, '\n').replace(/\n(?=.)/g, `\n${' '.repeat(marker.length)}`);
 
 function htmlToMarkdown(root) {
   const walk = (node) => [...node.childNodes].map((n) => {
@@ -397,13 +464,13 @@ function htmlToMarkdown(root) {
     const inner = walk(n), tag = n.tagName.toLowerCase();
     switch (tag) {
       case 'h1': case 'h2': case 'h3': return `${'#'.repeat(+tag[1])} ${inner.trim()}\n\n`;
-      case 'strong': case 'b': return inner.trim() ? `**${inner}**` : inner;
-      case 'em': case 'i': return inner.trim() ? `*${inner}*` : inner;
+      case 'strong': case 'b': return wrapMark(inner, '**');
+      case 'em': case 'i': return wrapMark(inner, '*');
       case 'u': return inner;
-      case 's': return inner.trim() ? `~~${inner}~~` : inner;
-      case 'br': return '\n';
-      case 'ul': return [...n.children].map((li) => `- ${walk(li).trim()}`).join('\n') + '\n\n';
-      case 'ol': return [...n.children].map((li, i) => `${i + 1}. ${walk(li).trim()}`).join('\n') + '\n\n';
+      case 's': return wrapMark(inner, '~~');
+      case 'br': return '  \n'; // two trailing spaces = a hard line break in Markdown
+      case 'ul': return [...n.children].map((li) => listItem('- ', walk(li))).join('\n') + '\n\n';
+      case 'ol': return [...n.children].map((li, i) => listItem(`${i + 1}. `, walk(li))).join('\n') + '\n\n';
       case 'blockquote': return inner.trim().split('\n').map((l) => `> ${l}`).join('\n') + '\n\n';
       case 'a': return `[${inner}](${n.getAttribute('href')})`;
       case 'p': case 'div': return `${inner.trim()}\n\n`;
@@ -417,7 +484,8 @@ $('export-btn').addEventListener('click', () => {
   const a = Object.assign(document.createElement('a'), {
     href: URL.createObjectURL(blob), download: `${($('title').value || 'document').replace(/[\\/:*?"<>|]/g, '_')}.md`,
   });
-  a.click(); URL.revokeObjectURL(a.href);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000); // revoking in the same tick can cancel the download in some browsers
 });
 
 // ---------- sharing ----------
@@ -480,6 +548,7 @@ async function boot() {
   state.me = await api('/api/me');
   if (!state.me) return showLogin();
   $('login').hidden = true; $('app').hidden = false; $('toast').hidden = true;
+  setNav(false); // closed drawer starts inert on phones
   $('owned').innerHTML = SKELETON; $('shared').innerHTML = SKELETON; // shown only until the first list arrives
   $('me-name').textContent = state.me.name;
   $('me-avatar').innerHTML = '';
