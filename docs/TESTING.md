@@ -2,10 +2,10 @@
 
 ## One command
 ```bash
-npm run check      # ESLint + 26 API tests + production build
+npm run check      # ESLint + 30 API tests + production build
 npm run test:e2e   # 10 browser tests (Playwright, real Chrome, 3 users, in-memory DB)
 ```
-Last run: 2026-10-14 12:10 PKT. `check` clean, 26/26 API tests, 10/10 E2E, three consecutive E2E runs with no flakes.
+Last run: 2026-10-14 12:50 PKT. `check` clean, 30/30 API tests, 10/10 E2E. Live site (https://ajaia-docs-three-pi.vercel.app): 21/21 smoke checks (roles, sanitising, sharing, versions, presence, import, security headers).
 
 ## What is covered
 

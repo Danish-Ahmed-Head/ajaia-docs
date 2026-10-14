@@ -1,7 +1,7 @@
 # Submission: Danish Ahmed, AI-Native Full Stack Developer (Ajaia)
 
 ## Links
-- **Live app:** _<Vercel URL>_
+- **Live app:** https://ajaia-docs-three-pi.vercel.app
 - **Walkthrough video:** in `VIDEO_URL.txt`
 - **Source:** https://github.com/Danish-Ahmed-Head/ajaia-docs (and this folder)
 
@@ -15,7 +15,7 @@ No passwords. Pick a user on the sign-in screen; use **Switch user** to change.
 | Path | What it is |
 |---|---|
 | `server/`, `src/` | Source code: Express 5 + Postgres API; Tiptap 3 frontend built with Vite |
-| `test/` | 26 API tests (`npm test`); `e2e/` 10 browser tests (`npm run test:e2e`) |
+| `test/` | 30 API tests (`npm test`); `e2e/` 10 browser tests (`npm run test:e2e`) |
 | `docs/TESTING.md` | Test strategy, mutation check, 10-minute manual test script |
 | `docs/DEPLOYMENT.md` | Hosting options compared, step-by-step deploy, production checklist |
 | `docs/PLAN.md` | Task breakdown for the hardening iteration |
