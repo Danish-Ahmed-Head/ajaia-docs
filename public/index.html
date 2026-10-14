@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ajaia Docs</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Sign-in (mocked auth: choose a seeded user) -->
+  <section id="login" class="login" hidden>
+    <div class="login-card">
+      <h1>Ajaia Docs</h1>
+      <p class="muted">Demo sign-in — pick a seeded user. Switch users to test sharing.</p>
+      <div id="user-list" class="user-list"></div>
+    </div>
+  </section>
+
+  <div id="app" class="app" hidden>
+    <aside class="sidebar">
+      <div class="brand">Ajaia Docs</div>
+      <div class="actions">
+        <button id="new-doc" class="primary">+ New document</button>
+        <label class="button" title="Supported: .txt, .md, .docx (max 2 MB)">
+          Import file
+          <input id="upload" type="file" accept=".txt,.md,.docx" hidden>
+        </label>
+        <p class="hint">Import supports .txt, .md, .docx (max 2 MB) — creates a new editable document.</p>
+      </div>
+      <h2>My documents</h2>
+      <ul id="owned" class="doc-list"></ul>
+      <h2>Shared with me</h2>
+      <ul id="shared" class="doc-list"></ul>
+      <div class="me">
+        <span id="me-name"></span>
+        <button id="logout" class="link">Switch user</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div id="empty" class="empty">
+        <p>Select a document or create a new one.</p>
+      </div>
+
+      <div id="editor-view" hidden>
+        <header class="doc-header">
+          <input id="title" class="title" maxlength="200" aria-label="Document title">
+          <span id="save-status" class="save-status"></span>
+          <button id="share-btn">Share</button>
+          <button id="export-btn" title="Download as Markdown">Export .md</button>
+          <button id="delete-btn" class="danger">Delete</button>
+        </header>
+        <div id="doc-meta" class="doc-meta"></div>
+        <div id="toolbar" class="toolbar" role="toolbar" aria-label="Formatting">
+          <select id="block-style" aria-label="Text style">
+            <option value="p">Normal text</option>
+            <option value="h1">Heading 1</option>
+            <option value="h2">Heading 2</option>
+            <option value="h3">Heading 3</option>
+          </select>
+          <button data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+          <button data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+          <button data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+          <button data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+          <span class="sep"></span>
+          <button data-cmd="insertUnorderedList" title="Bulleted list">• List</button>
+          <button data-cmd="insertOrderedList" title="Numbered list">1. List</button>
+          <span class="sep"></span>
+          <button data-cmd="undo" title="Undo (Ctrl+Z)">↶</button>
+          <button data-cmd="redo" title="Redo (Ctrl+Y)">↷</button>
+        </div>
+        <div id="readonly-banner" class="banner" hidden>You have view-only access to this document.</div>
+        <article id="editor" class="editor" spellcheck="true"></article>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="share-dialog">
+    <form method="dialog" id="share-form">
+      <h3>Share document</h3>
+      <div class="row">
+        <select id="share-email" aria-label="User"></select>
+        <select id="share-role" aria-label="Role">
+          <option value="editor">Can edit</option>
+          <option value="viewer">Can view</option>
+        </select>
+        <button id="share-add" class="primary" type="button">Share</button>
+      </div>
+      <p id="share-error" class="error"></p>
+      <h4>People with access</h4>
+      <ul id="share-list" class="share-list"></ul>
+      <div class="row end"><button value="close">Done</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
