@@ -47,7 +47,7 @@ Built for the Ajaia AI-Native Full Stack Developer assessment as one focused, te
 | Stretch item | Built as |
 |---|---|
 | Real-time collaboration indicators | Avatars of who else has the document open, plus a "Bob updated this document. Load latest" notice |
-| Document version history | Browse earlier versions with author and time, preview them, restore any one (owners and editors) |
+| Document version history | Browse earlier versions with author and time, preview them, restore any one (owners and editors). It doubles as an audit trail (who changed what, and when), which regulated teams need |
 | Export to PDF or Markdown | **Export .md** downloads Markdown; **Export PDF** prints only the document through the browser's Save as PDF |
 | Role-based permissions beyond basic access | Owner / editor / viewer, enforced on every API route, with in-place role changes |
 | Commenting or suggestion mode | Not built (see [Scope](#scope-whats-in-whats-out)) |
