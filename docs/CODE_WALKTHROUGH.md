@@ -270,4 +270,4 @@ Two reviewers read every line without seeing my reasoning. Every finding was che
   - Sidebar layout that becomes a drawer below 760 px.
   - A `@media print` block that prints only the document (Export PDF).
   - `prefers-reduced-motion` turns animations off.
-- **Tests:** 38 API tests (`test/*.test.js`) over real HTTP against in-memory Postgres, 16 Playwright browser tests (`e2e/`), and a live smoke script (21 checks) run against the deployed URL. See `docs/TESTING.md`.
+- **Tests:** 38 API tests (`test/*.test.js`) over real HTTP against in-memory Postgres, 17 Playwright browser tests (`e2e/`), and a live smoke script (21 checks) run against the deployed URL. See `docs/TESTING.md`.

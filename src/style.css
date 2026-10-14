@@ -371,6 +371,15 @@ dialog h4 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px
   .invite { grid-template-columns: 1fr 1fr; }
   .invite select:first-child { grid-column: 1 / -1; }
   .empty { margin-top: 8vh; }
+  .sidebar { overscroll-behavior: contain; } /* scrolling the drawer list never scrolls the page behind it */
+}
+
+/* Touch screens get 44px tap targets (WCAG 2.5.5); mouse users keep the compact toolbar. */
+@media (pointer: coarse) {
+  .btn, .btn-sm, .toolbar select, .title { min-height: 44px; }
+  .btn-icon, .btn-icon.btn-sm, .doc-actions .btn { width: 44px; }
+  .toolbar button { width: 44px; height: 44px; }
+  .toolbar { gap: 4px; }
 }
 
 /* ---------- Export PDF: the browser's print-to-PDF prints only the document ---------- */

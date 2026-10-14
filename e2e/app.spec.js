@@ -361,6 +361,19 @@ test('ux: on a phone the home screen has a compact top bar and opens the documen
   await expect(page.locator('#new-doc')).toBeFocused();
 });
 
+test('ux: on touch screens every editor control is at least 44px to tap', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const page = await context.newPage();
+  await signIn(page, 'Alice Owner');
+  await page.locator('#menu-btn').click();
+  await page.locator('#owned a').first().click();
+  await expect(page.locator('#editor .tiptap')).toBeVisible();
+  const small = await page.$$eval('.toolbar button, .toolbar select, .doc-actions .btn, #menu-btn', (els) =>
+    els.filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect()).filter((b) => b.width < 44 || b.height < 44).length);
+  expect(small).toBe(0);
+  await context.close();
+});
+
 test('expired session sends the user back to sign-in', async ({ page, context }) => {
   await signIn(page, 'Alice Owner');
   await context.clearCookies();
