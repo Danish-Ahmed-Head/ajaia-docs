@@ -1,13 +1,16 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../server/app.js';
+import { createDb } from '../server/db.js';
 
-let server, base;
+// Real Postgres SQL via in-memory PGlite: same dialect as production (Neon), zero setup.
+let server, base, db;
 before(async () => {
-  server = createApp(':memory:').listen(0);
+  db = await createDb();
+  server = createApp(db).listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
 });
-after(() => server.close());
+after(async () => { server.close(); await db.close(); });
 
 async function login(email) {
   const r = await fetch(`${base}/api/login`, {
@@ -81,6 +84,31 @@ test('upload: .txt and .md become editable docs; unsupported type rejected', asy
   assert.match((await badRes.json()).error, /Supported: \.txt, \.md, \.docx/);
 });
 
-test('unauthenticated requests are rejected', async () => {
+test('upload keeps non-ASCII filenames intact', async () => {
+  const alice = await login('alice@example.com');
+  const fd = new FormData();
+  fd.append('file', new Blob(['x']), 'Résumé notes.txt');
+  const { id } = await (await alice('/api/upload', { method: 'POST', body: fd })).json();
+  assert.equal((await (await alice(`/api/docs/${id}`)).json()).title, 'Résumé notes');
+});
+
+test('unauthenticated, malformed and unknown requests get clean errors', async () => {
   assert.equal((await fetch(`${base}/api/docs`)).status, 401);
+  const alice = await login('alice@example.com');
+  assert.equal((await alice('/api/docs/999999')).status, 404);
+  assert.equal((await alice('/api/docs/abc')).status, 404);
+  const bad = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{oops' });
+  assert.equal(bad.status, 400);
+  assert.deepEqual(await bad.json(), { error: 'Malformed JSON' });
+});
+
+test('deleting a document removes it for people it was shared with', async () => {
+  const alice = await login('alice@example.com');
+  const bob = await login('bob@example.com');
+  const { id } = await (await alice('/api/docs', { method: 'POST', body: { title: 'Temp' } })).json();
+  await alice(`/api/docs/${id}/share`, { method: 'POST', body: { email: 'bob@example.com', role: 'viewer' } });
+  assert.equal((await bob(`/api/docs/${id}`)).status, 200);
+  assert.equal((await alice(`/api/docs/${id}`, { method: 'DELETE' })).status, 200);
+  assert.equal((await bob(`/api/docs/${id}`)).status, 404);
+  assert.ok(!(await (await bob('/api/docs')).json()).shared.some((d) => d.id === id));
 });

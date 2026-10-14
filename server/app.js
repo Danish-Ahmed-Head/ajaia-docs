@@ -3,159 +3,166 @@ import multer from 'multer';
 import sanitizeHtml from 'sanitize-html';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDb } from './db.js';
-import { fileToHtml } from './convert.js';
+import { fileToHtml, SUPPORTED } from './convert.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MAX_TITLE = 200;
 const MAX_CONTENT = 1_000_000;
+const MAX_UPLOAD = 2 * 1024 * 1024;
 
-// Server is the source of truth for what HTML is allowed: only the formatting the editor produces.
+// The server is the trust boundary: only the formatting the editor can produce is stored.
 const SANITIZE = {
-  allowedTags: ['p', 'br', 'h1', 'h2', 'h3', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'blockquote', 'a', 'div'],
-  allowedAttributes: { a: ['href'] },
+  allowedTags: ['p', 'br', 'h1', 'h2', 'h3', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'blockquote', 'a', 'code', 'pre', 'hr'],
+  allowedAttributes: { a: ['href', 'target', 'rel'] },
   allowedSchemes: ['http', 'https', 'mailto'],
 };
 const clean = (html) => sanitizeHtml(html, SANITIZE);
 
-class HttpError extends Error {
+export class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
-export function createApp(dbPath = ':memory:') {
-  const db = openDb(dbPath);
+/** @param {{one: Function, all: Function, query: Function}} db */
+export function createApp(db) {
   const app = express();
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD, files: 1 } });
   app.use(express.json({ limit: '2mb' }));
 
-  // --- mocked auth: pick a seeded user; id stored in an httpOnly cookie (documented trade-off) ---
+  // --- mocked auth (allowed by the brief): pick a seeded user; id kept in an httpOnly cookie ---
   const readCookie = (req, name) => {
     const m = (req.headers.cookie || '').split(/;\s*/).find((c) => c.startsWith(name + '='));
     return m ? decodeURIComponent(m.slice(name.length + 1)) : null;
   };
-  app.use('/api', (req, _res, next) => {
-    const id = Number(readCookie(req, 'uid'));
-    req.user = id ? db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(id) ?? null : null;
+  app.use('/api', async (req, _res, next) => {
+    const id = Number.parseInt(readCookie(req, 'uid'), 10);
+    req.user = Number.isInteger(id) ? await db.one('SELECT id, name, email FROM users WHERE id = $1', [id]) : null;
     next();
   });
-  const requireUser = (req, _res, next) => (req.user ? next() : next(new HttpError(401, 'Not signed in')));
+  const requireUser = (req, _res, next) => next(req.user ? undefined : new HttpError(401, 'Not signed in'));
 
-  app.get('/api/users', (_req, res) => {
-    res.json(db.prepare('SELECT id, name, email FROM users ORDER BY id').all());
+  app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  app.get('/api/users', async (_req, res) => {
+    res.json(await db.all('SELECT id, name, email FROM users ORDER BY id'));
   });
-  app.post('/api/login', (req, res, next) => {
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    const user = db.prepare('SELECT id, name, email FROM users WHERE email = ?').get(email);
-    if (!user) return next(new HttpError(404, 'Unknown user'));
+  app.post('/api/login', async (req, res) => {
+    const email = String(req.body?.email ?? '').trim().toLowerCase();
+    const user = await db.one('SELECT id, name, email FROM users WHERE email = $1', [email]);
+    if (!user) throw new HttpError(404, 'Unknown user');
     res.setHeader('Set-Cookie', `uid=${user.id}; Path=/; HttpOnly; SameSite=Lax`);
     res.json(user);
   });
   app.post('/api/logout', (_req, res) => {
-    res.setHeader('Set-Cookie', 'uid=; Path=/; Max-Age=0');
+    res.setHeader('Set-Cookie', 'uid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax');
     res.json({ ok: true });
   });
   app.get('/api/me', (req, res) => res.json(req.user));
 
-  // Returns the doc plus the caller's effective role ('owner' | 'editor' | 'viewer'), or throws 404/403.
-  function loadDoc(id, user) {
-    const doc = db.prepare(`
-      SELECT d.*, u.name AS owner_name, u.email AS owner_email
-      FROM documents d JOIN users u ON u.id = d.owner_id WHERE d.id = ?`).get(Number(id));
+  /** Resolve the caller's effective role ('owner' | 'editor' | 'viewer') or throw 404/403. Single access gate. */
+  async function loadDoc(rawId, user) {
+    const id = Number.parseInt(rawId, 10);
+    if (!Number.isInteger(id) || String(id) !== String(rawId)) throw new HttpError(404, 'Document not found');
+    const doc = await db.one(`
+      SELECT d.*, u.name AS owner_name, u.email AS owner_email, s.role AS share_role
+      FROM documents d
+      JOIN users u ON u.id = d.owner_id
+      LEFT JOIN shares s ON s.doc_id = d.id AND s.user_id = $2
+      WHERE d.id = $1`, [id, user.id]);
     if (!doc) throw new HttpError(404, 'Document not found');
-    let role = null;
-    if (doc.owner_id === user.id) role = 'owner';
-    else role = db.prepare('SELECT role FROM shares WHERE doc_id = ? AND user_id = ?').get(doc.id, user.id)?.role ?? null;
+    const role = doc.owner_id === user.id ? 'owner' : doc.share_role;
     if (!role) throw new HttpError(403, 'You do not have access to this document');
     return { doc, role };
   }
-  const route = (fn) => async (req, res, next) => { try { await fn(req, res); } catch (e) { next(e); } };
 
-  app.get('/api/docs', requireUser, (req, res) => {
-    const owned = db.prepare(`
-      SELECT id, title, updated_at FROM documents WHERE owner_id = ? ORDER BY updated_at DESC, id DESC`).all(req.user.id);
-    const shared = db.prepare(`
+  app.get('/api/docs', requireUser, async (req, res) => {
+    const owned = await db.all(`
+      SELECT id, title, updated_at FROM documents WHERE owner_id = $1 ORDER BY updated_at DESC, id DESC`, [req.user.id]);
+    const shared = await db.all(`
       SELECT d.id, d.title, d.updated_at, s.role, u.name AS owner_name
       FROM shares s JOIN documents d ON d.id = s.doc_id JOIN users u ON u.id = d.owner_id
-      WHERE s.user_id = ? ORDER BY d.updated_at DESC, d.id DESC`).all(req.user.id);
+      WHERE s.user_id = $1 ORDER BY d.updated_at DESC, d.id DESC`, [req.user.id]);
     res.json({ owned, shared });
   });
 
-  const createDoc = (user, title, content) =>
-    Number(db.prepare('INSERT INTO documents (title, content, owner_id) VALUES (?, ?, ?)')
-      .run(title, content, user.id).lastInsertRowid);
+  const createDoc = async (user, title, content) =>
+    (await db.one('INSERT INTO documents (title, content, owner_id) VALUES ($1, $2, $3) RETURNING id',
+      [title, content, user.id])).id;
 
-  app.post('/api/docs', requireUser, (req, res) => {
+  app.post('/api/docs', requireUser, async (req, res) => {
     const title = String(req.body?.title ?? '').trim().slice(0, MAX_TITLE) || 'Untitled document';
-    res.status(201).json({ id: createDoc(req.user, title, '') });
+    res.status(201).json({ id: await createDoc(req.user, title, '') });
   });
 
-  app.get('/api/docs/:id', requireUser, route((req, res) => {
-    const { doc, role } = loadDoc(req.params.id, req.user);
+  app.get('/api/docs/:id', requireUser, async (req, res) => {
+    const { doc, role } = await loadDoc(req.params.id, req.user);
     const shares = role === 'owner'
-      ? db.prepare(`SELECT u.id, u.name, u.email, s.role FROM shares s JOIN users u ON u.id = s.user_id
-                    WHERE s.doc_id = ? ORDER BY u.name`).all(doc.id)
+      ? await db.all(`SELECT u.id, u.name, u.email, s.role FROM shares s JOIN users u ON u.id = s.user_id
+                      WHERE s.doc_id = $1 ORDER BY u.name`, [doc.id])
       : [];
     res.json({ id: doc.id, title: doc.title, content: doc.content, updated_at: doc.updated_at,
       owner: { name: doc.owner_name, email: doc.owner_email }, role, shares });
-  }));
+  });
 
-  app.put('/api/docs/:id', requireUser, route((req, res) => {
-    const { doc, role } = loadDoc(req.params.id, req.user);
+  app.put('/api/docs/:id', requireUser, async (req, res) => {
+    const { doc, role } = await loadDoc(req.params.id, req.user);
     if (role === 'viewer') throw new HttpError(403, 'View-only access: you cannot edit this document');
     const { title, content } = req.body ?? {};
+    if (title === undefined && content === undefined) throw new HttpError(400, 'Nothing to update');
     if (title !== undefined) {
       if (typeof title !== 'string' || !title.trim()) throw new HttpError(400, 'Title cannot be empty');
-      if (title.length > MAX_TITLE) throw new HttpError(400, `Title must be at most ${MAX_TITLE} characters`);
+      if (title.trim().length > MAX_TITLE) throw new HttpError(400, `Title must be at most ${MAX_TITLE} characters`);
     }
     if (content !== undefined) {
       if (typeof content !== 'string') throw new HttpError(400, 'Content must be an HTML string');
       if (content.length > MAX_CONTENT) throw new HttpError(413, 'Document too large');
     }
-    db.prepare('UPDATE documents SET title = ?, content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(title !== undefined ? title.trim() : doc.title,
-        content !== undefined ? clean(content) : doc.content, doc.id);
-    res.json({ ok: true, updated_at: db.prepare('SELECT updated_at FROM documents WHERE id = ?').get(doc.id).updated_at });
-  }));
+    const row = await db.one(
+      'UPDATE documents SET title = $1, content = $2, updated_at = now() WHERE id = $3 RETURNING updated_at',
+      [title !== undefined ? title.trim() : doc.title, content !== undefined ? clean(content) : doc.content, doc.id]);
+    res.json({ ok: true, updated_at: row.updated_at });
+  });
 
-  app.delete('/api/docs/:id', requireUser, route((req, res) => {
-    const { doc, role } = loadDoc(req.params.id, req.user);
+  app.delete('/api/docs/:id', requireUser, async (req, res) => {
+    const { doc, role } = await loadDoc(req.params.id, req.user);
     if (role !== 'owner') throw new HttpError(403, 'Only the owner can delete a document');
-    db.prepare('DELETE FROM documents WHERE id = ?').run(doc.id);
+    await db.query('DELETE FROM documents WHERE id = $1', [doc.id]);
     res.json({ ok: true });
-  }));
+  });
 
   // --- sharing (owner only) ---
-  app.post('/api/docs/:id/share', requireUser, route((req, res) => {
-    const { doc, role } = loadDoc(req.params.id, req.user);
+  app.post('/api/docs/:id/share', requireUser, async (req, res) => {
+    const { doc, role } = await loadDoc(req.params.id, req.user);
     if (role !== 'owner') throw new HttpError(403, 'Only the owner can share this document');
-    const email = String(req.body?.email || '').trim().toLowerCase();
+    const email = String(req.body?.email ?? '').trim().toLowerCase();
     const shareRole = ['viewer', 'editor'].includes(req.body?.role) ? req.body.role : null;
     if (!shareRole) throw new HttpError(400, 'role must be "viewer" or "editor"');
-    const target = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    const target = await db.one('SELECT id FROM users WHERE email = $1', [email]);
     if (!target) throw new HttpError(404, `No user with email ${email || '(empty)'}`);
     if (target.id === doc.owner_id) throw new HttpError(400, 'The owner already has full access');
-    db.prepare(`INSERT INTO shares (doc_id, user_id, role) VALUES (?, ?, ?)
-                ON CONFLICT(doc_id, user_id) DO UPDATE SET role = excluded.role`).run(doc.id, target.id, shareRole);
+    await db.query(`INSERT INTO shares (doc_id, user_id, role) VALUES ($1, $2, $3)
+                    ON CONFLICT (doc_id, user_id) DO UPDATE SET role = EXCLUDED.role`, [doc.id, target.id, shareRole]);
     res.json({ ok: true });
-  }));
+  });
 
-  app.delete('/api/docs/:id/share/:userId', requireUser, route((req, res) => {
-    const { doc, role } = loadDoc(req.params.id, req.user);
+  app.delete('/api/docs/:id/share/:userId', requireUser, async (req, res) => {
+    const { doc, role } = await loadDoc(req.params.id, req.user);
     if (role !== 'owner') throw new HttpError(403, 'Only the owner can change sharing');
-    db.prepare('DELETE FROM shares WHERE doc_id = ? AND user_id = ?').run(doc.id, Number(req.params.userId));
+    await db.query('DELETE FROM shares WHERE doc_id = $1 AND user_id = $2', [doc.id, Number.parseInt(req.params.userId, 10)]);
     res.json({ ok: true });
-  }));
+  });
 
-  // --- file upload -> new editable document (.txt, .md, .docx) ---
-  app.post('/api/upload', requireUser, upload.single('file'), route(async (req, res) => {
+  // --- file upload -> new editable document ---
+  app.post('/api/upload', requireUser, upload.single('file'), async (req, res) => {
     if (!req.file) throw new HttpError(400, 'No file provided (form field name: "file")');
-    const html = clean(await fileToHtml(req.file.originalname, req.file.buffer));
-    const title = req.file.originalname.replace(/\.[^.]+$/, '').slice(0, MAX_TITLE) || 'Imported document';
-    res.status(201).json({ id: createDoc(req.user, title, html) });
-  }));
+    // multer decodes multipart filenames as latin1; restore UTF-8 names.
+    const name = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    const html = clean(await fileToHtml(name, req.file.buffer));
+    const title = name.replace(/\.[^.]+$/, '').trim().slice(0, MAX_TITLE) || 'Imported document';
+    res.status(201).json({ id: await createDoc(req.user, title, html) });
+  });
+  app.get('/api/upload/supported', (_req, res) => res.json({ extensions: SUPPORTED, maxBytes: MAX_UPLOAD }));
 
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Not found')));
-  app.use(express.static(path.join(__dirname, '..', 'public')));
+  app.use(express.static(path.join(__dirname, '..', 'dist')));
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
@@ -164,7 +171,8 @@ export function createApp(dbPath = ':memory:') {
       return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'File too large (max 2 MB)' : err.message });
     }
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Malformed JSON' });
-    const status = err.status || 500;
+    if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Request too large' });
+    const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 600 ? err.status : 500;
     if (status >= 500) console.error(err);
     res.status(status).json({ error: status >= 500 ? 'Internal server error' : err.message });
   });

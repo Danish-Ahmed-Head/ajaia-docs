@@ -1,9 +1,12 @@
-import { createApp } from './app.js';
-import fs from 'node:fs';
 import path from 'node:path';
+import { createApp } from './app.js';
+import { createDb } from './db.js';
 
-const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-fs.mkdirSync(dataDir, { recursive: true });
-const app = createApp(path.join(dataDir, 'docs.db'));
+// Production: DATABASE_URL (Neon Postgres). Local: PGlite persisted in ./data — no setup needed.
+const db = await createDb({
+  url: process.env.DATABASE_URL,
+  dataDir: process.env.DATABASE_URL ? undefined : path.join(process.cwd(), 'data', 'pglite'),
+});
 const port = Number(process.env.PORT) || 3000;
-app.listen(port, () => console.log(`Ajaia Docs running on http://localhost:${port}`));
+createApp(db).listen(port, () =>
+  console.log(`Ajaia Docs on http://localhost:${port} (${process.env.DATABASE_URL ? 'Postgres' : 'local PGlite'})`));

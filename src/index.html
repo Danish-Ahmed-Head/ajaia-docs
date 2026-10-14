@@ -58,19 +58,20 @@
             <option value="h2">Heading 2</option>
             <option value="h3">Heading 3</option>
           </select>
-          <button data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
-          <button data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
-          <button data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
-          <button data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+          <button data-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button>
+          <button data-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic"><i>I</i></button>
+          <button data-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline"><u>U</u></button>
+          <button data-cmd="strike" title="Strikethrough (Ctrl+Shift+S)" aria-label="Strikethrough"><s>S</s></button>
           <span class="sep"></span>
-          <button data-cmd="insertUnorderedList" title="Bulleted list">• List</button>
-          <button data-cmd="insertOrderedList" title="Numbered list">1. List</button>
+          <button data-cmd="bulletList" title="Bulleted list (Ctrl+Shift+8)" aria-label="Bulleted list">• List</button>
+          <button data-cmd="orderedList" title="Numbered list (Ctrl+Shift+7)" aria-label="Numbered list">1. List</button>
+          <button data-cmd="blockquote" title="Quote (Ctrl+Shift+B)" aria-label="Quote">❝</button>
           <span class="sep"></span>
-          <button data-cmd="undo" title="Undo (Ctrl+Z)">↶</button>
-          <button data-cmd="redo" title="Redo (Ctrl+Y)">↷</button>
+          <button data-cmd="undo" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+          <button data-cmd="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
         </div>
         <div id="readonly-banner" class="banner" hidden>You have view-only access to this document.</div>
-        <article id="editor" class="editor" spellcheck="true"></article>
+        <article id="editor" class="editor"></article>
       </div>
     </main>
   </div>
@@ -94,6 +95,6 @@
   </dialog>
 
   <div id="toast" class="toast" hidden></div>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>

@@ -1,58 +1,76 @@
-# Ajaia Docs — lightweight collaborative document editor
+# Ajaia Docs: lightweight collaborative document editor
 
-A small full-stack document editor: create, rename, edit with rich text, import files, and share documents with other users as **editor** or **viewer**.
+Create, rename and edit rich-text documents, import files, and share documents with other users as **editor** or **viewer**.
 
-**Live demo:** _<add deployment URL>_
+**Live demo:** _<add Render URL>_. The free tier sleeps after 15 minutes idle, so the first load can take about a minute.
 **Walkthrough video:** see `VIDEO_URL.txt`
 
-## Test accounts (mocked auth)
+## Test accounts (mocked auth, no passwords)
 
-There are no passwords. On the sign-in screen, pick one of the seeded users. Use **Switch user** (bottom-left) to change who you are.
+On the sign-in screen, pick a user. Use **Switch user** (bottom-left) to change who you are.
 
-| User | Email | Suggested role in the demo |
+| User | Email | Use it to… |
 |---|---|---|
-| Alice Owner | alice@example.com | Creates and shares documents |
-| Bob Editor | bob@example.com | Gets **can edit** access |
-| Carol Reviewer | carol@example.com | Gets **view only** access |
+| Alice Owner | alice@example.com | create and share documents |
+| Bob Editor | bob@example.com | receive **can edit** access |
+| Carol Reviewer | carol@example.com | receive **view only** access |
 
 ### 2-minute review script
-1. Sign in as **Alice**, click **+ New document**, type a title, then write some text. Use the toolbar for headings, bold, italic, underline, and lists.
-2. The status shows "All changes saved" (autosave fires about 0.8 s after you stop typing). Refresh the page: content and formatting are still there.
+1. Sign in as **Alice**, click **+ New document**, type a title, then write. Use the toolbar (text style, **B**, *I*, U, S, bulleted and numbered lists, quote, undo/redo) or shortcuts (Ctrl+B/I/U, `# ` for a heading, `- ` for a list).
+2. The status shows "All changes saved" (autosave about 0.8 s after you stop typing). **Refresh**: content and formatting are still there.
 3. Click **Share**. Add Bob as *Can edit* and Carol as *Can view*.
-4. **Switch user** to Bob. The doc appears under **Shared with me** with a "can edit" badge, and Bob can edit it.
-5. **Switch user** to Carol. The doc is view-only: a banner shows, the toolbar is disabled, and the API also rejects writes.
-6. Click **Import file** and pick a `.txt`, `.md` or `.docx` file (max 2 MB). It becomes a new editable document.
-7. **Export .md** downloads the current document as Markdown.
+4. **Switch user** to Bob. The doc appears under **Shared with me** with a "can edit" badge; Bob can edit.
+5. **Switch user** to Carol. The doc is view-only: a banner shows, the toolbar is disabled, and the API also returns 403 on writes.
+6. Click **Import file** and pick a `.txt`, `.md` or `.docx` file (max 2 MB). It becomes a new editable document you own.
+7. **Export .md** downloads the document as Markdown.
 
 ## Run locally
 
-Requires **Node.js 22.5+**, because it uses the built-in `node:sqlite`. No other services are needed.
+Requires **Node.js 22.12 or newer**. No database setup is needed: without `DATABASE_URL`, the app uses an embedded Postgres (PGlite) stored in `./data/`.
 
 ```bash
 npm install
-npm start          # http://localhost:3000
-npm test           # API tests (node:test)
+npm run dev        # builds the frontend, then serves http://localhost:3000
+npm test           # 5 API tests against in-memory Postgres (PGlite)
 ```
 
-Data is stored in `./data/docs.db` (SQLite). Set `DATA_DIR` to change the location and `PORT` to change the port. Delete the file to reset; users are re-seeded on start.
+| Env var | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | unset → PGlite in `./data/pglite` | Postgres connection string (production: Neon) |
+| `PORT` | `3000` | HTTP port |
+
+Delete `./data/` to reset local data. The three users are re-seeded on start.
 
 ## Supported file import
-- `.txt`: paragraphs split on blank lines
-- `.md`: headings (`#`–`###`), `**bold**`, `*italic*`, bulleted and numbered lists, paragraphs
-- `.docx`: converted with `mammoth` (headings, bold/italic, lists)
+| Type | Conversion |
+|---|---|
+| `.txt` | Paragraphs split on blank lines; text is escaped |
+| `.md` | Headings (`#`–`###`), `**bold**`, `*italic*`, bulleted and numbered lists, paragraphs |
+| `.docx` | Converted with `mammoth` (paragraphs, headings, bold/italic, lists, links) |
 
-Other types are rejected with a clear error (HTTP 415), and the limit is shown in the UI.
+Anything else returns HTTP 415 with the supported list. The limit is shown in the UI next to the Import button.
 
-## Deploy
-The included `Dockerfile` runs on any container host (Render, Railway, Fly.io). Mount a persistent volume at `/data` so documents survive restarts. On free tiers without a disk, the database resets when the instance restarts. That is fine for a demo but noted as a limitation.
+## Deploy (free: Render + Neon)
+1. Create a free Neon project and copy its connection string.
+2. Push this repo to GitHub, then in Render choose **New → Blueprint** and select the repo (`render.yaml` is included).
+3. Paste the Neon string into the `DATABASE_URL` env var in the Render dashboard. Never commit it.
+4. Open `/api/health` to confirm the service is up. Tables and seed users are created automatically on first boot.
+
+`Dockerfile` is included for any container host as an alternative.
 
 ## Project layout
 ```
-server/app.js      Express app: auth, documents, sharing, upload, validation, errors
-server/db.js       SQLite schema + seeded users
+server/app.js      Express 5 API: auth, documents, access control, sharing, upload, validation, errors
+server/db.js       Postgres schema + seed; pg (production) or PGlite (dev/test) behind one query() interface
 server/convert.js  .txt / .md / .docx → HTML
-public/            Vanilla JS frontend (index.html, app.js, style.css)
-test/api.test.js   End-to-end API tests against an in-memory DB
+src/               Frontend: index.html, app.js (Tiptap 3 editor), style.css. Built by Vite into dist/
+test/api.test.js   API tests over real HTTP against in-memory Postgres
+docs/              DECISIONS.md (ADRs), SDLC.md (process, defect log)
 ```
 
-See `ARCHITECTURE.md` for decisions and trade-offs, and `AI_WORKFLOW.md` for how AI was used.
+More: `ARCHITECTURE.md` (design and trade-offs), `AI_WORKFLOW.md` (how AI was used), `docs/DECISIONS.md` (every tech choice with evidence).
+
+## Known limitations
+- Auth is mocked by design: anyone can pick any seeded user.
+- No real-time co-editing; last write wins.
+- `npm audit` reports 3 moderate findings in `mammoth` → `argparse` → `sprintf-js`. They are used only by mammoth's CLI, not by the library API this app calls (see ADR-005).

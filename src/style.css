@@ -54,10 +54,13 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .toolbar button.on { background: var(--active); border-color: var(--accent); }
 .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
 .banner { margin-top: 10px; background: #fff8e1; border: 1px solid #f0d58a; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
-.editor { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-top: 12px; min-height: 60vh; padding: 40px 56px; line-height: 1.6; max-width: 860px; outline: none; font-size: 16px; }
-.editor:focus { border-color: var(--accent); }
-.editor:empty::before { content: "Start typing…"; color: var(--muted); }
+.editor { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-top: 12px; max-width: 860px; }
+.editor:focus-within { border-color: var(--accent); }
+.editor .tiptap { min-height: 60vh; padding: 40px 56px; line-height: 1.6; outline: none; font-size: 16px; }
+.editor .tiptap > :first-child { margin-top: 0; }
 .editor h1 { font-size: 28px; } .editor h2 { font-size: 22px; } .editor h3 { font-size: 18px; }
+.editor li > p { margin: 0.2em 0; }
+.editor blockquote { border-left: 3px solid var(--line); margin-left: 0; padding-left: 14px; color: var(--muted); }
 
 dialog { border: 1px solid var(--line); border-radius: 10px; padding: 20px; width: min(480px, calc(100vw - 32px)); }
 dialog h3 { margin-top: 0; }
@@ -74,5 +77,5 @@ dialog h3 { margin-top: 0; }
   .app { grid-template-columns: 1fr; }
   .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
   .main { padding: 16px; }
-  .editor { padding: 20px 16px; }
+  .editor .tiptap { padding: 20px 16px; }
 }

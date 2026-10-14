@@ -1,3 +1,6 @@
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+
 const $ = (id) => document.getElementById(id);
 const state = { me: null, doc: null, saveTimer: null, dirty: false, saving: null };
 
@@ -18,7 +21,7 @@ function toast(msg) {
   clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 3500);
 }
 const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const fmtDate = (s) => new Date(s.replace(' ', 'T') + 'Z').toLocaleString();
+const fmtDate = (s) => new Date(s).toLocaleString();
 
 // ---------- auth ----------
 async function showLogin() {
@@ -74,8 +77,24 @@ $('upload').addEventListener('change', async (e) => {
 });
 
 // ---------- editor ----------
-const editor = $('editor');
-document.execCommand('defaultParagraphSeparator', false, 'p');
+// Tiptap (ProseMirror): schema-enforced formatting, so stored HTML is always well-formed.
+// A fresh editor per document so undo history never crosses documents.
+let editor = null;
+function mountEditor(content, editable) {
+  editor?.destroy();
+  editor = new Editor({
+    element: $('editor'),
+    extensions: [StarterKit.configure({
+      heading: { levels: [1, 2, 3] },
+      code: false, codeBlock: false, horizontalRule: false,
+      link: { openOnClick: false, autolink: true },
+    })],
+    content,
+    editable,
+    onUpdate: scheduleSave,
+    onTransaction: updateToolbar,
+  });
+}
 
 async function openDoc(id) {
   await flushSave();
@@ -88,8 +107,7 @@ async function openDoc(id) {
   const d = state.doc, canEdit = d.role !== 'viewer';
   $('empty').hidden = true; $('editor-view').hidden = false;
   $('title').value = d.title; $('title').readOnly = !canEdit;
-  editor.innerHTML = d.content || (canEdit ? '<p><br></p>' : '');
-  editor.contentEditable = canEdit ? 'true' : 'false';
+  mountEditor(d.content || '', canEdit);
   $('readonly-banner').hidden = canEdit;
   $('toolbar').querySelectorAll('button, select').forEach((el) => (el.disabled = !canEdit));
   $('share-btn').hidden = d.role !== 'owner';
@@ -118,46 +136,43 @@ async function save() {
   if (!title) { setStatus('Title cannot be empty', true); return; }
   state.dirty = false; setStatus('Saving…');
   const doc = state.doc;
-  state.saving = api(`/api/docs/${doc.id}`, { method: 'PUT', body: { title, content: editor.innerHTML } })
+  state.saving = api(`/api/docs/${doc.id}`, { method: 'PUT', body: { title, content: editor.getHTML() } })
     .then((r) => { if (state.doc === doc) { doc.title = title; setStatus('All changes saved'); } doc.updated_at = r.updated_at; refreshList(); })
     .catch((err) => { state.dirty = true; setStatus(`Save failed: ${err.message}`, true); });
   await state.saving;
 }
 async function flushSave() { if (state.dirty) await save(); else if (state.saving) await state.saving; }
 
-editor.addEventListener('input', scheduleSave);
 $('title').addEventListener('input', scheduleSave);
-$('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); editor.focus(); } });
+$('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); editor?.commands.focus(); } });
 window.addEventListener('beforeunload', (e) => { if (state.dirty) { save(); e.preventDefault(); } });
 
-// Paste as plain text: keeps stored HTML clean and predictable (formatting via toolbar).
-editor.addEventListener('paste', (e) => {
-  e.preventDefault();
-  document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
-});
-
-// Toolbar
+// Toolbar -> Tiptap commands. Pasted content is normalised by the editor schema (and sanitised again on the server).
+const COMMANDS = {
+  bold: (c) => c.toggleBold(), italic: (c) => c.toggleItalic(), underline: (c) => c.toggleUnderline(),
+  strike: (c) => c.toggleStrike(), bulletList: (c) => c.toggleBulletList(), orderedList: (c) => c.toggleOrderedList(),
+  blockquote: (c) => c.toggleBlockquote(), undo: (c) => c.undo(), redo: (c) => c.redo(),
+};
 $('toolbar').addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); }); // keep selection
 $('toolbar').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-cmd]'); if (!b) return;
-  document.execCommand(b.dataset.cmd, false, null);
-  editor.focus(); updateToolbar(); scheduleSave();
+  const b = e.target.closest('button[data-cmd]');
+  if (b && editor) COMMANDS[b.dataset.cmd](editor.chain().focus()).run();
 });
 $('block-style').addEventListener('change', (e) => {
-  editor.focus();
-  document.execCommand('formatBlock', false, e.target.value);
-  scheduleSave();
+  const level = Number(e.target.value.slice(1));
+  const chain = editor.chain().focus();
+  (e.target.value === 'p' ? chain.setParagraph() : chain.setHeading({ level })).run();
 });
 function updateToolbar() {
-  if (!state.doc || !editor.contains(document.getSelection().anchorNode)) return;
+  if (!editor) return;
   for (const b of $('toolbar').querySelectorAll('button[data-cmd]')) {
-    if (['undo', 'redo'].includes(b.dataset.cmd)) continue;
-    b.classList.toggle('on', document.queryCommandState(b.dataset.cmd));
+    const cmd = b.dataset.cmd;
+    if (cmd === 'undo' || cmd === 'redo') b.disabled = !editor.isEditable || !editor.can()[cmd]();
+    else b.classList.toggle('on', editor.isActive(cmd));
   }
-  const block = String(document.queryCommandValue('formatBlock') || 'p').toLowerCase();
-  $('block-style').value = ['h1', 'h2', 'h3'].includes(block) ? block : 'p';
+  const level = [1, 2, 3].find((l) => editor.isActive('heading', { level: l }));
+  $('block-style').value = level ? `h${level}` : 'p';
 }
-document.addEventListener('selectionchange', updateToolbar);
 
 // ---------- delete / export ----------
 $('delete-btn').addEventListener('click', async () => {
@@ -184,14 +199,16 @@ function htmlToMarkdown(root) {
       case 'br': return '\n';
       case 'ul': return [...n.children].map((li) => `- ${walk(li).trim()}`).join('\n') + '\n\n';
       case 'ol': return [...n.children].map((li, i) => `${i + 1}. ${walk(li).trim()}`).join('\n') + '\n\n';
-      case 'p': case 'div': case 'blockquote': return `${inner.trim()}\n\n`;
+      case 'blockquote': return inner.trim().split('\n').map((l) => `> ${l}`).join('\n') + '\n\n';
+      case 'a': return `[${inner}](${n.getAttribute('href')})`;
+      case 'p': case 'div': return `${inner.trim()}\n\n`;
       default: return inner;
     }
   }).join('');
   return walk(root).replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 $('export-btn').addEventListener('click', () => {
-  const blob = new Blob([htmlToMarkdown(editor)], { type: 'text/markdown' });
+  const blob = new Blob([htmlToMarkdown(editor.view.dom)], { type: 'text/markdown' });
   const a = Object.assign(document.createElement('a'), {
     href: URL.createObjectURL(blob), download: `${($('title').value || 'document').replace(/[\\/:*?"<>|]/g, '_')}.md`,
   });

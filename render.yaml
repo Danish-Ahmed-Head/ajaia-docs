@@ -1,0 +1,14 @@
+# Render Blueprint: one free web service. DATABASE_URL (Neon) is entered in the Render dashboard, never committed.
+services:
+  - type: web
+    name: ajaia-docs
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22.12.0"
+      - key: DATABASE_URL
+        sync: false
